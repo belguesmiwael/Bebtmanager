@@ -1,0 +1,3702 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="light">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="theme-color" id="themeColor" content="#E4002B"/>
+<meta name="description" content="Gestion des dettes clients – Ooredoo Belguesmi Nader"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="DebtManager"/>
+<title>Debt Manager – Belguesmi Nader</title>
+
+<!-- ===== FONTS ===== -->
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+
+<!-- Firebase & jsPDF — defer = non-bloquant mais fiable -->
+<script defer src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<!-- PWA manifest — data URI (fonctionne sur Chrome Android, iOS Safari) -->
+<script>
+(function(){
+  try{
+    // Build icon canvas
+    const ic=sz=>{
+      try{
+        const cv=document.createElement('canvas');cv.width=cv.height=sz;
+        const ctx=cv.getContext('2d');
+        ctx.fillStyle='#E4002B';ctx.fillRect(0,0,sz,sz);
+        ctx.fillStyle='#fff';ctx.font=`bold ${Math.floor(sz*.38)}px Arial,sans-serif`;
+        ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('DM',sz/2,sz/2);
+        return cv.toDataURL('image/png');
+      }catch{return 'data:image/png;base64,iVBORw0KGgo=';}
+    };
+    const manifest={
+      name:'Debt Manager – Belguesmi Nader',
+      short_name:'DebtMgr',
+      description:'Gestion des dettes – Ooredoo Tunisia',
+      display:'standalone',
+      orientation:'portrait',
+      theme_color:'#E4002B',
+      background_color:'#E4002B',
+      start_url:location.pathname||'./',
+      scope:location.pathname||'./',
+      lang:'fr',
+      icons:[
+        {src:ic(192),sizes:'192x192',type:'image/png',purpose:'any'},
+        {src:ic(192),sizes:'192x192',type:'image/png',purpose:'maskable'},
+        {src:ic(512),sizes:'512x512',type:'image/png',purpose:'any'},
+        {src:ic(512),sizes:'512x512',type:'image/png',purpose:'maskable'}
+      ]
+    };
+    // data: URI — supported by all modern mobile browsers for manifests
+    const json=JSON.stringify(manifest);
+    const b64=btoa(unescape(encodeURIComponent(json)));
+    const link=document.createElement('link');
+    link.rel='manifest';
+    link.href='data:application/manifest+json;base64,'+b64;
+    document.head.appendChild(link);
+  }catch(e){console.warn('Manifest error:',e);}
+})();
+</script>
+
+<style>
+/* ================================================================
+   CSS VARIABLES
+================================================================ */
+:root{
+  --red:#E4002B; --red-d:#B8001F; --red-l:rgba(228,0,43,.12);
+  --bg:#F4F4F8; --surface:#FFF; --surface2:#EEEEEF; --surface3:#E2E2E8;
+  --border:rgba(0,0,0,.08); --shadow:0 2px 14px rgba(0,0,0,.07);
+  --text:#0C0C14; --text2:#52526A; --text3:#9595A8;
+  --green:#00C875; --green-bg:rgba(0,200,117,.1);
+  --orange:#FF8C00; --orange-bg:rgba(255,140,0,.1);
+  --blue:#0090FF; --blue-bg:rgba(0,144,255,.1);
+  --radius:16px; --radius-sm:10px; --radius-xs:7px;
+  --font:'Montserrat',sans-serif;
+  --nav:64px; --tr:.22s cubic-bezier(.4,0,.2,1);
+}
+[data-theme=dark]{
+  --bg:#0D0D12; --surface:#18181F; --surface2:#20202A; --surface3:#282834;
+  --border:rgba(255,255,255,.07); --shadow:0 2px 20px rgba(0,0,0,.4);
+  --text:#F0F0F5; --text2:#8888A0; --text3:#50506A;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-tap-highlight-color:transparent}
+body{font-family:var(--font);background:var(--bg);color:var(--text);
+  min-height:100dvh;transition:background var(--tr),color var(--tr);
+  overscroll-behavior:none}
+button{cursor:pointer;border:none;background:none;font-family:inherit;color:inherit}
+input,select{font-family:inherit}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:99px}
+
+/* ================================================================
+   FIREBASE LOADING SCREEN
+================================================================ */
+#fbLoading{
+  position:fixed;inset:0;z-index:99999;
+  background:var(--red);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;
+}
+#fbLoading.hidden{display:none}
+.fb-spinner{
+  width:42px;height:42px;border:4px solid rgba(255,255,255,.3);
+  border-top-color:#fff;border-radius:50%;
+  animation:spin .8s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.fb-loading-txt{font-weight:600;font-size:14px;color:rgba(255,255,255,.85)}
+.fb-loading-brand{font-weight:900;font-size:32px;color:#fff;letter-spacing:-.5px}
+.fb-loading-sub{font-size:10px;font-weight:500;color:rgba(255,255,255,.65);
+  letter-spacing:.12em;text-transform:uppercase;margin-top:4px;text-align:center}
+
+/* ================================================================
+   LOGIN SCREEN
+================================================================ */
+#loginScreen{
+  position:fixed;inset:0;z-index:9998;
+  background:var(--red);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:24px;
+}
+#loginScreen.hidden{display:none}
+.login-brand{font-weight:900;font-size:38px;color:#fff;letter-spacing:-.5px;line-height:1}
+.login-sub{font-size:11px;font-weight:500;color:rgba(255,255,255,.7);
+  letter-spacing:.12em;text-transform:uppercase;margin-top:5px}
+.login-card{
+  background:#fff;border-radius:20px;padding:28px 24px;
+  width:100%;max-width:360px;margin-top:28px;
+  box-shadow:0 8px 40px rgba(0,0,0,.25);
+}
+[data-theme=dark] .login-card{background:#18181F}
+.login-card h2{font-size:16px;font-weight:700;color:var(--text);margin-bottom:6px;text-align:center}
+.login-card p{font-size:12px;color:var(--text3);text-align:center;margin-bottom:22px}
+.lf{margin-bottom:14px;position:relative}
+.lf label{display:block;font-size:11px;font-weight:600;color:var(--text2);
+  text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+.lf input{
+  width:100%;padding:12px 40px 12px 13px;
+  border:1.5px solid var(--border);border-radius:var(--radius-sm);
+  font-size:14px;color:var(--text);background:var(--bg);outline:none;
+  transition:border var(--tr);font-family:var(--font);
+}
+.lf input:focus{border-color:var(--red)}
+.lf .eye{position:absolute;right:11px;bottom:11px;color:var(--text3);cursor:pointer;font-size:16px}
+.login-err{color:var(--red);font-size:12px;font-weight:500;
+  text-align:center;margin-bottom:10px;display:none}
+.login-err.show{display:block}
+.btn-login{
+  width:100%;padding:13px;border-radius:var(--radius-sm);
+  background:var(--red);color:#fff;font-family:var(--font);
+  font-size:15px;font-weight:700;border:none;cursor:pointer;
+  transition:background var(--tr);
+}
+.btn-login:hover{background:var(--red-d)}
+.btn-login:active{transform:scale(.98)}
+.login-footer{text-align:center;font-size:10px;color:rgba(255,255,255,.5);
+  margin-top:20px;line-height:1.7}
+
+/* ================================================================
+   SYNC STATUS BADGE
+================================================================ */
+.sync-dot{
+  width:8px;height:8px;border-radius:50%;flex-shrink:0;
+  transition:background .3s;
+}
+.sync-dot.online{background:#00C875;box-shadow:0 0 0 2px rgba(0,200,117,.3)}
+.sync-dot.offline{background:#FF8C00;box-shadow:0 0 0 2px rgba(255,140,0,.3)}
+.sync-dot.syncing{background:#0090FF;animation:pulse 1s ease infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.sync-label{font-size:9px;font-weight:600;color:rgba(255,255,255,.7);
+  letter-spacing:.05em;text-transform:uppercase}
+
+/* ================================================================
+   APP SHELL — RESPONSIVE (Mobile + PC)
+================================================================ */
+#appShell{display:none}
+#appShell.visible{display:block}
+
+/* ── Mobile base ── */
+#app{max-width:480px;margin:0 auto;position:relative;min-height:100dvh}
+
+/* ================================================================
+   TABLET — 600-899px
+================================================================ */
+@media(min-width:600px) and (max-width:899px){
+  #app{max-width:100%}
+  .sg{grid-template-columns:repeat(3,1fr)!important}
+  .sc.full{grid-column:1/-1}
+  #cList,#dList{display:grid!important;grid-template-columns:repeat(2,1fr)!important;gap:10px!important}
+  .mb{max-width:560px!important}
+  .view{padding:16px 24px;padding-bottom:80px}
+}
+
+/* ================================================================
+   DESKTOP — ≥ 900px : Sidebar + full content area
+================================================================ */
+@media(min-width:900px){
+
+  /* Reset body overflow */
+  body{overflow-x:hidden}
+
+  /* App shell fills viewport */
+  #appShell.visible{display:block;width:100vw;min-height:100vh}
+  #app{
+    max-width:100%;
+    width:100%;
+    margin:0;
+    min-height:100vh;
+    display:block;
+    position:relative;
+  }
+
+  /* ── SIDEBAR NAV ── */
+  .bnav{
+    position:fixed!important;
+    top:0!important;left:0!important;bottom:0!important;
+    width:240px!important;
+    flex-direction:column!important;
+    align-items:stretch!important;
+    justify-content:flex-start!important;
+    border-right:1.5px solid var(--border)!important;
+    border-top:none!important;
+    box-shadow:4px 0 24px rgba(0,0,0,.06)!important;
+    transform:none!important;
+    padding:80px 12px 24px!important;
+    gap:4px!important;
+    max-width:none!important;
+    z-index:90!important;
+    background:var(--surface)!important;
+    overflow-y:auto!important;
+  }
+  /* Sidebar brand at top */
+  .bnav::before{
+    content:'ooredoo';
+    display:block;
+    position:absolute;
+    top:0;left:0;right:0;
+    height:var(--nav);
+    background:var(--red);
+    font-family:var(--font);
+    font-weight:900;
+    font-size:22px;
+    color:#fff;
+    display:flex;
+    align-items:center;
+    padding:0 20px;
+    letter-spacing:-.3px;
+  }
+  .bnav::before{display:flex}
+  .bn{
+    flex-direction:row!important;
+    gap:12px!important;
+    font-size:14px!important;
+    font-weight:600!important;
+    padding:13px 16px!important;
+    border-radius:var(--radius-sm)!important;
+    margin:0!important;
+    justify-content:flex-start!important;
+    color:var(--text2)!important;
+    transition:all var(--tr)!important;
+    width:100%!important;
+  }
+  .bn:hover{background:var(--surface2)!important;color:var(--text)!important}
+  .bn.a{
+    background:var(--red-l)!important;
+    color:var(--red)!important;
+    font-weight:700!important;
+  }
+  .bn svg{width:20px!important;height:20px!important;flex-shrink:0}
+
+  /* ── TOPBAR ── */
+  .topbar{
+    position:fixed!important;
+    top:0!important;
+    left:240px!important;
+    right:0!important;
+    width:auto!important;
+    max-width:none!important;
+    z-index:100!important;
+    padding:0 28px!important;
+  }
+
+  /* ── VIEWS — full width, offset by sidebar ── */
+  .view{
+    margin-left:240px!important;
+    margin-top:var(--nav)!important;
+    min-height:calc(100vh - var(--nav))!important;
+    padding:32px 40px!important;
+    padding-bottom:48px!important;
+    max-width:none!important;
+    width:auto!important;
+    display:none;
+    flex-direction:column;
+    gap:20px;
+  }
+  .view.active{
+    display:flex!important;
+    animation:slideIn .22s ease;
+  }
+
+  /* ── DASHBOARD ── */
+  #vDash.active{
+    display:grid!important;
+    grid-template-columns:repeat(4,1fr)!important;
+    grid-template-rows:auto!important;
+    gap:20px!important;
+    align-content:start!important;
+  }
+  /* Full-width elements in dashboard grid */
+  #vDash > #offlineBanner,
+  #vDash > #ib,
+  #vDash > .status-row,
+  #vDash > .sh,
+  #vDash > #dList{
+    grid-column:1/-1!important;
+  }
+  /* Stats 4-col */
+  #vDash > .sg{
+    grid-column:1/-1!important;
+    grid-template-columns:repeat(5,1fr)!important;
+  }
+  #vDash .sc.full{grid-column:auto!important}
+  /* Debtors list 2-col */
+  #dList{
+    display:grid!important;
+    grid-template-columns:repeat(2,1fr)!important;
+    gap:14px!important;
+  }
+
+  /* ── CLIENTS VIEW ── */
+  #vClients.active{
+    display:flex!important;
+    flex-direction:column!important;
+    gap:16px!important;
+  }
+  #cList{
+    display:grid!important;
+    grid-template-columns:repeat(3,1fr)!important;
+    gap:14px!important;
+  }
+
+  /* ── DETAIL VIEW ── */
+  #vDetail.active{
+    display:flex!important;
+    flex-direction:column!important;
+    gap:16px!important;
+  }
+  #vDetail > .sh:first-of-type + div,
+  #vDetail > .ds{
+    display:grid!important;
+    grid-template-columns:repeat(3,1fr)!important;
+  }
+  /* Debts 2 col */
+  #debtList{
+    display:grid!important;
+    grid-template-columns:repeat(2,1fr)!important;
+    gap:14px!important;
+  }
+  /* Recon section full width */
+  #debtList > .recon-section{
+    grid-column:1/-1!important;
+  }
+
+  /* ── HISTORY VIEW ── */
+  #vHistory.active{
+    display:flex!important;
+    flex-direction:column!important;
+    gap:16px!important;
+  }
+  #hList{
+    display:grid!important;
+    grid-template-columns:repeat(2,1fr)!important;
+    gap:14px!important;
+    align-items:start!important;
+  }
+
+  /* ── MODALS — centered, wider ── */
+  .mo{align-items:center!important}
+  .mb{
+    max-width:680px!important;
+    border-radius:var(--radius)!important;
+    max-height:90vh!important;
+  }
+  /* Recon modal full height */
+  #mRecon .mb{
+    border-radius:var(--radius)!important;
+    min-height:auto!important;
+    max-height:90vh!important;
+  }
+
+  /* ── FAB ── */
+  .fab{
+    right:36px!important;
+    bottom:36px!important;
+    width:58px!important;
+    height:58px!important;
+  }
+
+  /* ── BACK BUTTON — hidden on desktop ── */
+  .tb-back{display:none!important}
+  /* Instead use breadcrumb navigation style */
+  #tbTitle{font-size:18px!important}
+
+  /* ── SCROLLBARS ── */
+  ::-webkit-scrollbar{width:6px}
+  ::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:99px}
+
+  /* ── PRINT ── */
+  @media print{
+    .bnav{display:none!important}
+    .view{margin-left:0!important;margin-top:0!important}
+    .topbar{position:relative!important;left:0!important}
+  }
+}
+
+/* ── Large Desktop ≥ 1400px ── */
+@media(min-width:1400px){
+  .bnav{width:260px!important}
+  .topbar{left:260px!important}
+  .view{margin-left:260px!important;padding:36px 56px!important}
+  #vDash > .sg{grid-template-columns:repeat(5,1fr)!important}
+  #cList{grid-template-columns:repeat(4,1fr)!important}
+  #dList{grid-template-columns:repeat(3,1fr)!important}
+  #hList{grid-template-columns:repeat(3,1fr)!important}
+}
+
+/* ================================================================
+   TOPBAR
+================================================================ */
+.topbar{
+  position:sticky;top:0;z-index:100;
+  background:var(--red);height:var(--nav);
+  display:flex;align-items:center;gap:8px;padding:0 14px;
+  box-shadow:0 2px 16px rgba(228,0,43,.3);
+}
+.tb-back{width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.18);
+  display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0;
+  transition:background var(--tr)}
+.tb-back:hover{background:rgba(255,255,255,.3)}
+.tb-logo{display:flex;align-items:center;gap:9px;flex:1;min-width:0}
+.tb-brand{display:flex;flex-direction:column;line-height:1}
+.tb-name{font-size:16px;font-weight:900;color:#fff;letter-spacing:-.3px}
+.tb-sub{font-size:9px;font-weight:500;color:rgba(255,255,255,.7);
+  letter-spacing:.1em;text-transform:uppercase;margin-top:1px}
+.tb-actions{display:flex;gap:5px;flex-shrink:0;align-items:center}
+.ib{width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.18);
+  display:flex;align-items:center;justify-content:center;color:#fff;
+  transition:background var(--tr);flex-shrink:0}
+.ib:hover{background:rgba(255,255,255,.3)}
+
+/* Sync pill in topbar */
+.sync-pill{
+  display:flex;align-items:center;gap:5px;
+  background:rgba(255,255,255,.18);border-radius:99px;
+  padding:4px 9px 4px 7px;cursor:default;
+}
+
+/* ================================================================
+   VIEWS
+================================================================ */
+.view{display:none;flex-direction:column;min-height:calc(100dvh - var(--nav));
+  padding:14px;gap:12px;padding-bottom:80px}
+.view.active{display:flex;animation:slideIn .26s ease}
+@keyframes slideIn{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}
+
+/* ================================================================
+   FIREBASE BANNER (offline warning)
+================================================================ */
+.offline-banner{
+  display:none;background:var(--orange-bg);border:1px solid var(--orange);
+  border-radius:var(--radius-sm);padding:10px 13px;
+  align-items:center;gap:9px;font-size:12px;color:var(--orange);font-weight:600;
+}
+.offline-banner.show{display:flex}
+
+/* ================================================================
+   STATS GRID
+================================================================ */
+.sg{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.sc{background:var(--surface);border-radius:var(--radius);padding:14px;
+  border:1px solid var(--border);box-shadow:var(--shadow);
+  display:flex;flex-direction:column;gap:4px;transition:transform .14s}
+.sc:active{transform:scale(.985)}
+.sc.full{grid-column:1/-1}
+.sc-lbl{font-size:10px;font-weight:600;color:var(--text3);
+  text-transform:uppercase;letter-spacing:.06em}
+.sc-val{font-size:21px;font-weight:800}
+.sc-val.r{color:var(--red)}.sc-val.g{color:var(--green)}.sc-val.o{color:var(--orange)}
+.sc-icon{font-size:20px;margin-bottom:3px}
+.sc-sub{font-size:10px;color:var(--text3);margin-top:2px}
+
+/* ================================================================
+   SECTION HEADER
+================================================================ */
+.sh{display:flex;align-items:center;justify-content:space-between;padding:2px 0}
+.sh h2{font-size:14px;font-weight:700}
+.badge{background:var(--red);color:#fff;border-radius:99px;
+  font-size:11px;font-weight:700;padding:2px 8px;min-width:20px;text-align:center}
+
+/* ================================================================
+   SEARCH
+================================================================ */
+.sw{position:relative}
+.sw input{width:100%;padding:11px 14px 11px 37px;background:var(--surface);
+  border:1.5px solid var(--border);border-radius:var(--radius-sm);
+  font-size:13px;color:var(--text);outline:none;transition:border var(--tr);font-family:var(--font)}
+.sw input:focus{border-color:var(--red)}
+.sw .si{position:absolute;left:11px;top:50%;transform:translateY(-50%);
+  color:var(--text3);pointer-events:none}
+
+/* ================================================================
+   CLIENT CARD
+================================================================ */
+.cc{background:var(--surface);border-radius:var(--radius);padding:12px;
+  border:1px solid var(--border);box-shadow:var(--shadow);
+  display:flex;align-items:center;gap:11px;cursor:pointer;
+  transition:transform .14s;position:relative;overflow:hidden}
+.cc:active{transform:scale(.985)}
+.cc-av{width:43px;height:43px;border-radius:50%;background:var(--red);
+  display:flex;align-items:center;justify-content:center;
+  font-weight:800;font-size:15px;color:#fff;flex-shrink:0}
+.cc-info{flex:1;min-width:0}
+.cc-name{font-weight:700;font-size:13px;margin-bottom:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cc-phone{font-size:11px;color:var(--text3)}
+.cc-last{font-size:10px;color:var(--text3);margin-top:2px}
+.cc-amounts{text-align:right;flex-shrink:0}
+.cc-debt{font-weight:800;font-size:14px;color:var(--red)}
+.cc-paid{font-size:10px;color:var(--green);margin-top:2px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--red);
+  position:absolute;top:10px;right:10px;box-shadow:0 0 0 3px var(--red-l)}
+
+/* ================================================================
+   FAB
+================================================================ */
+.fab{position:fixed;bottom:22px;right:calc(50% - 240px + 14px);
+  width:52px;height:52px;border-radius:50%;background:var(--red);color:#fff;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 4px 20px rgba(228,0,43,.4);z-index:85;transition:transform .14s}
+@media(max-width:480px){.fab{right:14px}}
+.fab:active{transform:scale(.92)}
+
+/* ================================================================
+   HERO
+================================================================ */
+.hero{background:var(--red);border-radius:var(--radius);padding:16px;
+  display:flex;align-items:center;gap:12px;color:#fff}
+.hero-av{width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.2);
+  display:flex;align-items:center;justify-content:center;
+  font-weight:800;font-size:20px;flex-shrink:0}
+.hero-name{font-size:16px;font-weight:800}
+.hero-phone{font-size:12px;opacity:.8;margin-top:2px}
+.hero-acts{display:flex;gap:5px;margin-left:auto;flex-shrink:0}
+
+/* ================================================================
+   DETAIL STATS
+================================================================ */
+.ds{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.dsc{background:var(--surface);border-radius:var(--radius-sm);padding:11px 8px;
+  text-align:center;border:1px solid var(--border)}
+.dsc-l{font-size:10px;font-weight:600;color:var(--text3);
+  text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}
+.dsc-v{font-size:13px;font-weight:800}
+
+/* ================================================================
+   DEBT CARD
+================================================================ */
+.dc{background:var(--surface);border-radius:var(--radius);
+  border:1px solid var(--border);box-shadow:var(--shadow);overflow:hidden}
+.dc-head{display:flex;align-items:flex-start;justify-content:space-between;padding:13px;gap:8px}
+.dc-title{font-weight:700;font-size:13px;margin-bottom:3px;
+  display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.dc-date{font-size:11px;color:var(--text3)}
+.dc-right{text-align:right;flex-shrink:0}
+.dc-total{font-weight:800;font-size:14px}
+.dc-reste{font-size:11px;color:var(--text3);margin-top:2px}
+.prog-wrap{padding:0 13px}
+.prog-bar{height:5px;background:var(--surface3);border-radius:99px;overflow:hidden;margin:5px 0 3px}
+.prog-fill{height:100%;border-radius:99px;transition:width .5s ease}
+.prog-fill.full{background:var(--green)}.prog-fill.partial{background:var(--orange)}.prog-fill.none{background:var(--red)}
+.prog-pct{font-size:10px;color:var(--text3);text-align:right;display:block;margin-bottom:5px}
+.pays-list{padding:0 13px 10px;display:flex;flex-direction:column;gap:6px}
+.pay-item{display:flex;align-items:center;justify-content:space-between;
+  background:var(--surface2);border-radius:var(--radius-xs);padding:7px 10px}
+.pay-info{display:flex;align-items:center;gap:7px}
+.pay-dot{width:7px;height:7px;border-radius:50%;background:var(--green);flex-shrink:0}
+.pay-dt{font-size:11px;color:var(--text2)}
+.pay-amt{font-size:13px;font-weight:700;color:var(--green)}
+.pay-del{color:var(--text3);padding:2px 6px;font-size:13px;transition:color .12s}
+.pay-del:hover{color:var(--red)}
+.dc-acts{display:flex;border-top:1px solid var(--border)}
+.dc-btn{flex:1;padding:9px;font-size:11px;font-weight:600;color:var(--text2);
+  display:flex;align-items:center;justify-content:center;gap:5px;
+  transition:background var(--tr);border-right:1px solid var(--border)}
+.dc-btn:last-child{border-right:none;color:var(--red)}
+.dc-btn:hover{background:var(--surface2)}
+.dc-btn:disabled{opacity:.35;cursor:default}
+
+/* ================================================================
+   HISTORY
+================================================================ */
+.hi{background:var(--surface);border-radius:var(--radius-sm);padding:11px 13px;
+  border:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px}
+.hi-client{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hi-date{font-size:11px;color:var(--text3);margin-top:2px}
+.hi-amt{font-size:15px;font-weight:800;color:var(--green);flex-shrink:0}
+
+/* ================================================================
+   BUTTONS
+================================================================ */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  padding:12px 20px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;
+  transition:all .14s;cursor:pointer;width:100%;font-family:var(--font)}
+.btn-p{background:var(--red);color:#fff}.btn-p:hover{background:var(--red-d)}.btn-p:active{transform:scale(.97)}
+.btn-g{background:var(--surface2);color:var(--text)}.btn-g:hover{background:var(--surface3)}
+.btn-d{background:rgba(228,0,43,.1);color:var(--red)}.btn-d:hover{background:rgba(228,0,43,.18)}
+.btn-sm{padding:7px 13px;font-size:12px;border-radius:var(--radius-xs);width:auto}
+
+/* ================================================================
+   MODAL
+================================================================ */
+.mo{position:fixed;inset:0;background:rgba(0,0,0,.52);backdrop-filter:blur(4px);
+  z-index:200;display:flex;align-items:flex-end;justify-content:center;
+  opacity:0;pointer-events:none;transition:opacity .22s}
+.mo.open{opacity:1;pointer-events:all}
+.mb{background:var(--surface);border-radius:var(--radius) var(--radius) 0 0;
+  width:100%;max-width:480px;padding:20px 18px 28px;
+  transform:translateY(36px);transition:transform .26s cubic-bezier(.4,0,.2,1);
+  max-height:88dvh;overflow-y:auto}
+.mo.open .mb{transform:none}
+.m-title{font-size:16px;font-weight:800;margin-bottom:16px}
+.m-close{float:right;width:30px;height:30px;border-radius:50%;background:var(--surface2);
+  display:flex;align-items:center;justify-content:center;color:var(--text2)}
+.m-close:hover{background:var(--surface3)}
+.cf::after{content:'';display:table;clear:both}
+
+/* ================================================================
+   FORM
+================================================================ */
+.fg{margin-bottom:13px}
+.fg label{display:block;font-size:11px;font-weight:600;color:var(--text2);
+  margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em}
+.fg input,.fg select{width:100%;padding:11px 13px;border:1.5px solid var(--border);
+  border-radius:var(--radius-sm);font-size:14px;color:var(--text);
+  background:var(--bg);outline:none;transition:border var(--tr);font-family:var(--font)}
+.fg input:focus,.fg select:focus{border-color:var(--red)}
+.fg input::placeholder{color:var(--text3)}
+.f-hint{font-size:12px;color:var(--text3);margin-top:4px}
+.f-err{font-size:12px;color:var(--red);margin-top:4px;display:none}
+.f-err.show{display:block}
+[data-theme=dark] .fg input,[data-theme=dark] .fg select{background:var(--surface2)}
+
+/* ================================================================
+   TOAST
+================================================================ */
+.toast{position:fixed;bottom:22px;left:50%;
+  transform:translateX(-50%) translateY(72px);z-index:9999;
+  background:var(--surface);color:var(--text);border-radius:var(--radius-sm);
+  padding:11px 18px;box-shadow:0 4px 24px rgba(0,0,0,.15);
+  font-size:13px;font-weight:500;white-space:nowrap;
+  display:flex;align-items:center;gap:8px;
+  border-left:4px solid var(--green);
+  transition:transform .28s cubic-bezier(.4,0,.2,1);max-width:320px;font-family:var(--font)}
+.toast.show{transform:translateX(-50%) translateY(0)}
+.toast.error{border-color:var(--red)}.toast.warn{border-color:var(--orange)}
+.toast.info{border-color:var(--blue)}
+
+/* ================================================================
+   CONFIRM
+================================================================ */
+.cov{position:fixed;inset:0;background:rgba(0,0,0,.48);backdrop-filter:blur(3px);
+  z-index:300;display:flex;align-items:center;justify-content:center;padding:18px;
+  opacity:0;pointer-events:none;transition:opacity .18s}
+.cov.open{opacity:1;pointer-events:all}
+.cb{background:var(--surface);border-radius:var(--radius);padding:22px;
+  width:100%;max-width:330px;transform:scale(.9);
+  transition:transform .2s cubic-bezier(.4,0,.2,1)}
+.cov.open .cb{transform:none}
+.c-title{font-size:15px;font-weight:700;margin-bottom:7px}
+.c-msg{font-size:13px;color:var(--text2);margin-bottom:18px;line-height:1.5}
+.c-acts{display:flex;gap:9px}
+.c-acts .btn{flex:1;padding:10px}
+
+/* ================================================================
+   EMPTY
+================================================================ */
+.empty{text-align:center;padding:36px 16px;display:flex;flex-direction:column;align-items:center;gap:8px}
+.empty-icon{font-size:44px;opacity:.45}
+.empty-title{font-size:14px;font-weight:700;color:var(--text2)}
+.empty-sub{font-size:12px;color:var(--text3)}
+
+/* ================================================================
+   INSTALL BANNER
+================================================================ */
+#ib{display:none;background:var(--surface);border:1.5px solid var(--red-l);
+  border-radius:var(--radius-sm);padding:11px 13px;align-items:center;gap:9px;
+  box-shadow:var(--shadow);margin-bottom:4px}
+#ib.v{display:flex}
+.ib-txt{flex:1;font-size:12px;color:var(--text2)}
+.ib-txt b{color:var(--text);font-weight:700}
+
+/* ================================================================
+   PILLS
+================================================================ */
+.pill{display:inline-block;border-radius:99px;font-size:10px;font-weight:600;padding:2px 8px}
+.pill-g{background:var(--green-bg);color:var(--green)}
+.pill-o{background:var(--orange-bg);color:var(--orange)}
+.pill-r{background:var(--red-l);color:var(--red)}
+
+/* ================================================================
+   BOTTOM NAV
+================================================================ */
+.bnav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);
+  width:100%;max-width:480px;background:var(--surface);
+  border-top:1px solid var(--border);display:flex;z-index:80;
+  box-shadow:0 -4px 16px rgba(0,0,0,.05)}
+.bn{flex:1;padding:9px 0;display:flex;flex-direction:column;align-items:center;gap:3px;
+  color:var(--text3);transition:color var(--tr);font-size:10px;font-weight:600;
+  cursor:pointer;background:none;border:none;font-family:var(--font)}
+.bn.a{color:var(--red)}
+
+/* ================================================================
+   CHIPS
+================================================================ */
+.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{padding:6px 12px;border-radius:99px;font-size:11px;font-weight:600;
+  white-space:nowrap;background:var(--surface2);color:var(--text2);
+  transition:all .14s;cursor:pointer;flex-shrink:0;border:1.5px solid transparent;font-family:var(--font)}
+.chip.a{background:var(--red);color:#fff;border-color:var(--red)}
+
+/* ================================================================
+   SETTINGS
+================================================================ */
+.settings-sec-title{font-size:11px;font-weight:700;color:var(--text3);
+  text-transform:uppercase;letter-spacing:.07em;padding:10px 0 6px}
+
+/* ================================================================
+   DATE FILTER BAR
+================================================================ */
+.df-bar{
+  background:var(--surface);border-radius:var(--radius-sm);
+  border:1px solid var(--border);box-shadow:var(--shadow);
+  padding:12px 13px;display:flex;flex-direction:column;gap:10px;
+  animation:slideIn .22s ease;
+}
+.df-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.df-label{font-size:10px;font-weight:700;color:var(--text3);
+  text-transform:uppercase;letter-spacing:.06em;min-width:34px}
+.df-inputs{display:flex;align-items:center;gap:6px;flex:1;min-width:0}
+.df-input{
+  flex:1;padding:7px 9px;border:1.5px solid var(--border);
+  border-radius:var(--radius-xs);font-size:12px;color:var(--text);
+  background:var(--bg);outline:none;transition:border var(--tr);
+  font-family:var(--font);min-width:0;
+}
+.df-input:focus{border-color:var(--red)}
+[data-theme=dark] .df-input{background:var(--surface2)}
+.df-sep{font-size:11px;color:var(--text3);font-weight:600;flex-shrink:0}
+
+/* Preset quick-chips */
+.df-presets{display:flex;gap:5px;flex-wrap:wrap}
+.df-chip{
+  padding:4px 10px;border-radius:99px;font-size:10px;font-weight:700;
+  background:var(--surface2);color:var(--text2);
+  transition:all .14s;cursor:pointer;border:1.5px solid transparent;
+  font-family:var(--font);white-space:nowrap;
+}
+.df-chip:hover{background:var(--surface3)}
+.df-chip.a{background:var(--red);color:#fff;border-color:var(--red)}
+.df-reset{
+  padding:4px 10px;border-radius:99px;font-size:10px;font-weight:700;
+  background:var(--red-l);color:var(--red);
+  transition:all .14s;cursor:pointer;border:none;
+  font-family:var(--font);white-space:nowrap;display:flex;align-items:center;gap:4px;
+  margin-left:auto;flex-shrink:0;
+}
+.df-reset:hover{background:rgba(228,0,43,.22)}
+
+/* Filter results summary */
+.df-summary{
+  display:flex;align-items:center;justify-content:space-between;
+  background:var(--surface2);border-radius:var(--radius-xs);
+  padding:9px 12px;gap:8px;flex-wrap:wrap;
+}
+.df-summary-item{display:flex;flex-direction:column;align-items:center;gap:2px;flex:1;min-width:70px}
+.df-summary-lbl{font-size:9px;font-weight:700;color:var(--text3);
+  text-transform:uppercase;letter-spacing:.05em}
+.df-summary-val{font-size:13px;font-weight:800}
+.df-summary-val.r{color:var(--red)}
+.df-summary-val.g{color:var(--green)}
+.df-summary-val.o{color:var(--orange)}
+.df-active-badge{
+  display:inline-flex;align-items:center;gap:4px;
+  background:var(--red);color:#fff;border-radius:99px;
+  font-size:10px;font-weight:700;padding:2px 8px;
+}
+
+/* Toggle filter button */
+.btn-filter{
+  display:flex;align-items:center;gap:5px;
+  padding:6px 11px;border-radius:var(--radius-xs);
+  font-size:11px;font-weight:700;
+  background:var(--surface2);color:var(--text2);
+  transition:all .14s;cursor:pointer;border:none;
+  font-family:var(--font);white-space:nowrap;
+}
+.btn-filter:hover{background:var(--surface3)}
+.btn-filter.active{background:var(--red-l);color:var(--red)}
+
+/* History total bar */
+.h-total{
+  background:var(--surface);border-radius:var(--radius-sm);
+  border:1px solid var(--border);padding:10px 14px;
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+}
+.h-total-lbl{font-size:12px;font-weight:600;color:var(--text2)}
+.h-total-val{font-size:16px;font-weight:800;color:var(--green)}
+
+/* ================================================================
+   CLIENT STATUS SYSTEM
+================================================================ */
+.status-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.src{background:var(--surface);border-radius:var(--radius-sm);padding:11px 8px;
+  border:1px solid var(--border);display:flex;flex-direction:column;align-items:center;
+  gap:4px;cursor:pointer;transition:transform .14s;text-align:center}
+.src:active{transform:scale(.97)}
+.src-icon{font-size:20px}.src-val{font-size:18px;font-weight:800}
+.src-lbl{font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.04em}
+.src.sn .src-val{color:var(--green)}
+.src.sr .src-val{color:var(--orange)}
+.src.sc .src-val{color:#8B0000}
+.spill{display:inline-flex;align-items:center;gap:4px;border-radius:99px;
+  font-size:10px;font-weight:700;padding:3px 9px}
+.sp-n{background:var(--green-bg);color:var(--green)}
+.sp-r{background:var(--orange-bg);color:var(--orange)}
+.sp-c{background:rgba(139,0,0,.12);color:#8B0000}
+.content-strip{background:#8B0000;color:#fff;font-size:9px;font-weight:800;
+  padding:2px 10px;letter-spacing:.08em;text-transform:uppercase;text-align:center}
+
+/* ================================================================
+   RECONNAISSANCE DE DETTE
+================================================================ */
+.recon-section{margin-top:10px;display:flex;flex-direction:column;gap:8px}
+.recon-sec-title{font-size:14px;font-weight:700}
+.recon-item{background:var(--surface2);border-radius:var(--radius-sm);padding:11px 12px;
+  display:flex;align-items:center;gap:10px;border:1px solid var(--border)}
+.recon-item-info{flex:1;min-width:0}
+.recon-item-title{font-size:13px;font-weight:700}
+.recon-item-sub{font-size:11px;color:var(--text3);margin-top:2px}
+.recon-item-acts{display:flex;gap:5px;flex-shrink:0}
+/* Signature canvas */
+.sig-wrap{border:1.5px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;background:#fff}
+.sig-canvas{display:block;width:100%;cursor:crosshair;touch-action:none}
+.sig-toolbar{display:flex;align-items:center;justify-content:space-between;
+  padding:7px 10px;border-top:1px solid var(--border);background:var(--surface2)}
+.sig-lbl{font-size:10px;font-weight:600;color:var(--text3)}
+.sig-ok{font-size:10px;font-weight:600;color:var(--green)}
+.sig-clear{font-size:11px;font-weight:700;color:var(--red);background:none;border:none;cursor:pointer;font-family:var(--font)}
+/* PDF preview */
+.pdf-prev{background:#fff;padding:18px;border-radius:var(--radius-sm);
+  border:1px solid #ddd;color:#1a1a2e;font-size:11px;line-height:1.8}
+[data-theme=dark] .pdf-prev{background:#fff;color:#1a1a2e}
+.pdf-hdr{text-align:center;border-bottom:2px solid #E4002B;padding-bottom:12px;margin-bottom:12px}
+.pdf-logo-txt{font-size:22px;font-weight:900;color:#E4002B}
+.pdf-agency{font-size:10px;color:#555;margin-top:2px}
+.pdf-doc-title{font-size:13px;font-weight:900;text-align:center;text-decoration:underline;
+  text-transform:uppercase;letter-spacing:.06em;margin:12px 0 8px;color:#1a1a2e}
+.pdf-body{font-size:11px;line-height:2;color:#222;white-space:pre-wrap}
+.pdf-sig-row{margin-top:16px;border-top:1px solid #ddd;padding-top:12px;
+  display:flex;justify-content:space-between;gap:16px}
+.pdf-sig-block{text-align:center;flex:1}
+.pdf-sig-lbl{font-size:9px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+.pdf-sig-area{min-height:48px;border-bottom:1.5px solid #999;margin-bottom:4px;
+  display:flex;align-items:flex-end;justify-content:center}
+.pdf-sig-name{font-size:10px;color:#999}
+/* Contentieux */
+.cnt-bar{background:rgba(139,0,0,.1);border:1px solid #8B0000;border-radius:var(--radius-xs);
+  padding:10px 12px;margin-bottom:12px;font-size:12px;color:#8B0000;font-weight:600}
+
+/* ================================================================
+   AVERTISSEMENTS PAR CLIENT
+================================================================ */
+.warn-panel{
+  background:var(--surface);border-radius:var(--radius);
+  border:1px solid var(--border);box-shadow:var(--shadow);
+  overflow:hidden;margin-top:4px;
+}
+.warn-panel-head{
+  padding:11px 14px;background:var(--surface2);
+  display:flex;align-items:center;justify-content:space-between;
+  border-bottom:1px solid var(--border);
+}
+.warn-panel-title{font-size:13px;font-weight:700}
+.warn-steps{display:flex;flex-direction:column;gap:0}
+.warn-step{
+  display:flex;align-items:center;gap:12px;
+  padding:12px 14px;border-bottom:1px solid var(--border);
+  transition:background var(--tr);
+}
+.warn-step:last-child{border-bottom:none}
+.warn-step.sent{opacity:.7}
+.warn-badge{
+  width:34px;height:34px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:800;flex-shrink:0;
+}
+.wb-1{background:var(--orange-bg);color:var(--orange)}
+.wb-2{background:var(--red-l);color:var(--red)}
+.wb-3{background:rgba(139,0,0,.12);color:#8B0000}
+.wb-done{background:var(--green-bg);color:var(--green)}
+.warn-info{flex:1;min-width:0}
+.warn-label{font-size:13px;font-weight:600}
+.warn-date{font-size:11px;color:var(--text3);margin-top:1px}
+.warn-actions{display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end}
+.warn-btn{
+  display:flex;align-items:center;gap:5px;
+  padding:6px 11px;border-radius:var(--radius-xs);
+  font-size:11px;font-weight:600;border:none;cursor:pointer;
+  font-family:var(--font);transition:all .14s;white-space:nowrap;
+}
+.warn-btn-wa{background:#25D366;color:#fff}
+.warn-btn-wa:hover{background:#1ea952}
+.warn-btn-sms{background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue)}
+.warn-btn-sms:hover{background:var(--blue);color:#fff}
+.warn-btn-copy{background:var(--surface2);color:var(--text2);border:1px solid var(--border)}
+.warn-btn-copy:hover{background:var(--surface3)}
+.warn-sent-badge{
+  display:inline-flex;align-items:center;gap:4px;
+  background:var(--green-bg);color:var(--green);
+  border-radius:99px;font-size:10px;font-weight:700;padding:2px 8px;
+}
+.warn-reset{
+  font-size:11px;color:var(--text3);background:none;border:none;
+  cursor:pointer;font-family:var(--font);padding:4px;
+  text-decoration:underline;
+}
+.warn-reset:hover{color:var(--red)}
+
+/* ================================================================
+   TRANCHES DE PAIEMENT
+================================================================ */
+.tranche-row{background:var(--surface2);border-radius:var(--radius-xs);
+  padding:10px 12px;border:1px solid var(--border);display:flex;flex-direction:column;gap:8px}
+.tranche-row-head{display:flex;align-items:center;justify-content:space-between}
+.tranche-badge{display:inline-flex;align-items:center;justify-content:center;
+  width:24px;height:24px;border-radius:50%;background:var(--red);
+  color:#fff;font-size:11px;font-weight:800;flex-shrink:0}
+.tranche-inputs{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tranche-input{padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--radius-xs);
+  font-size:13px;color:var(--text);background:var(--bg);outline:none;
+  transition:border var(--tr);font-family:var(--font);width:100%}
+.tranche-input:focus{border-color:var(--red)}
+[data-theme=dark] .tranche-input{background:var(--surface3)}
+.tranche-card{background:var(--surface);border-radius:var(--radius-sm);
+  border:1px solid var(--border);box-shadow:var(--shadow);overflow:hidden}
+.tranche-card-head{display:flex;align-items:center;justify-content:space-between;padding:11px 13px;gap:8px}
+.tranche-num{display:inline-flex;align-items:center;justify-content:center;
+  width:28px;height:28px;border-radius:50%;flex-shrink:0;font-size:12px;font-weight:800}
+.tn-pending{background:var(--orange-bg);color:var(--orange)}
+.tn-paid{background:var(--green-bg);color:var(--green)}
+.tn-overdue{background:var(--red-l);color:var(--red)}
+.tranche-info{flex:1;min-width:0}
+.tranche-amount{font-size:15px;font-weight:800}
+.tranche-date{font-size:11px;color:var(--text3);margin-top:2px}
+.tranche-actions{display:flex;gap:5px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end}
+
+/* Print styles
+================================================================ */
+@media print{
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  body{background:#fff!important;color:#000!important;font-size:12px}
+  #fbLoading,#loginScreen,#appShell .topbar,.bnav,.fab,
+  .btn-no-print,#ib,.chips,.sw{display:none!important}
+  .view{display:block!important;padding:0!important;min-height:auto!important}
+  .view:not(.active){display:none!important}
+  #printHeader{display:flex!important;align-items:center;justify-content:space-between;
+    padding:0 0 12px;border-bottom:2px solid #E4002B;margin-bottom:16px}
+  .sc,.cc,.dc,.hi{box-shadow:none!important;background:#fff!important;border:1px solid #ddd!important}
+  .hero{background:#E4002B!important;color:#fff!important}
+  .prog-fill.full{background:#00C875!important}
+  .prog-fill.partial{background:#FF8C00!important}
+  .prog-fill.none{background:#E4002B!important}
+  .dc{page-break-inside:avoid}
+}
+/* ── Sidebar brand & footer (desktop only) ── */
+.sidebar-brand{
+  display:none;position:absolute;top:0;left:0;right:0;height:var(--nav);
+  background:var(--red);flex-direction:column;align-items:flex-start;
+  justify-content:center;padding:0 20px;gap:1px;
+}
+.sidebar-logo{font-weight:900;font-size:22px;color:#fff;letter-spacing:-.3px;line-height:1}
+.sidebar-sub{font-size:9px;font-weight:500;color:rgba(255,255,255,.7);letter-spacing:.08em;text-transform:uppercase}
+.sidebar-footer{display:none;margin-top:auto;padding:16px;border-top:1px solid var(--border)}
+.sidebar-footer-txt{font-size:11px;font-weight:600;color:var(--text3)}
+@media(min-width:900px){
+  .sidebar-brand{display:flex}
+  .sidebar-footer{display:block}
+}
+
+#printHeader{display:none}
+</style>
+</head>
+<body>
+
+<!-- ================================================================
+     FIREBASE LOADING SCREEN
+================================================================ -->
+<div id="fbLoading">
+  <div class="fb-loading-brand">ooredoo</div>
+  <div class="fb-loading-sub">Belguesmi Nader — Debt Manager</div>
+  <div class="fb-spinner" style="margin-top:10px"></div>
+  <div class="fb-loading-txt" id="fbLoadTxt">Connexion à Firebase…</div>
+</div>
+
+<!-- ================================================================
+     LOGIN SCREEN
+================================================================ -->
+<div id="loginScreen" class="hidden">
+  <div style="text-align:center;margin-bottom:32px">
+    <div class="login-brand">ooredoo</div>
+    <div class="login-sub">Belguesmi Nader — Debt Manager</div>
+  </div>
+  <div class="login-card">
+    <h2>🔐 Connexion Admin</h2>
+    <p>Accès réservé à l'administrateur</p>
+    <div class="lf">
+      <label>Identifiant</label>
+      <input type="text" id="loginUser" placeholder="Nom d'utilisateur" autocomplete="username"/>
+    </div>
+    <div class="lf">
+      <label>Mot de passe</label>
+      <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password"/>
+      <span class="eye" id="eyeToggle">👁</span>
+    </div>
+    <div class="login-err" id="loginErr">Identifiant ou mot de passe incorrect</div>
+    <button class="btn-login" id="btnLogin">Se connecter</button>
+  </div>
+  <div class="login-footer">
+    Debt Manager v2.0 · Ooredoo Tunisia<br>
+    Belguesmi Nader · Données synchronisées Firebase
+  </div>
+</div>
+
+<!-- ================================================================
+     APP
+================================================================ -->
+<div id="appShell">
+<div id="app">
+
+<!-- PRINT HEADER -->
+<div id="printHeader">
+  <div>
+    <div style="font-size:20px;font-weight:900;color:#E4002B">ooredoo</div>
+    <div style="font-size:11px;color:#666;margin-top:2px">Belguesmi Nader — Debt Manager</div>
+  </div>
+  <div style="text-align:right">
+    <div style="font-size:12px;font-weight:600" id="printDocTitle"></div>
+    <div style="font-size:11px;color:#888" id="printDocDate"></div>
+  </div>
+</div>
+
+<!-- TOPBAR -->
+<header class="topbar">
+  <button class="tb-back ib btn-no-print" id="btnBack" style="display:none">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="m12 5-7 7 7 7"/></svg>
+  </button>
+  <div class="tb-logo">
+    <span id="logoEl" style="flex-shrink:0"></span>
+    <div class="tb-brand">
+      <span class="tb-name" id="tbTitle">Debt Manager</span>
+      <span class="tb-sub">Belguesmi Nader</span>
+    </div>
+  </div>
+  <div class="tb-actions">
+    <!-- Sync status pill -->
+    <div class="sync-pill btn-no-print" id="syncPill" title="Statut synchronisation">
+      <div class="sync-dot syncing" id="syncDot"></div>
+      <span class="sync-label" id="syncLabel">sync</span>
+    </div>
+    <button class="ib btn-no-print" id="btnPrintTop" title="Imprimer">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+    </button>
+    <button class="ib btn-no-print" id="btnTheme" title="Thème">
+      <svg id="themeIco" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+    </button>
+    <button class="ib btn-no-print" id="btnMenu" title="Options">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="12" cy="19" r="1.2" fill="currentColor"/></svg>
+    </button>
+  </div>
+</header>
+
+<!-- VIEW: DASHBOARD -->
+<section class="view active" id="vDash">
+  <div id="offlineBanner" class="offline-banner">
+    <span>📡</span>
+    <div style="flex:1">
+      <div>Mode hors-ligne — données locales affichées. La sync reprendra automatiquement.</div>
+      <div id="pendingBadge" style="display:none;font-size:10px;font-weight:700;color:var(--orange);margin-top:2px"></div>
+    </div>
+  </div>
+  <div id="ib">
+    <span style="font-size:26px">📲</span>
+    <div class="ib-txt">
+      <b>Installer l'application</b>
+      <div style="font-size:10px;color:var(--text3);margin-top:2px">Accès hors-ligne · Écran d'accueil · Sans App Store</div>
+    </div>
+    <button class="btn btn-p btn-sm" id="btnInstall" style="flex-shrink:0">Installer</button>
+    <button style="background:none;border:none;font-size:16px;color:var(--text3);cursor:pointer;padding:4px;flex-shrink:0" id="btnIbClose" title="Fermer">✕</button>
+  </div>
+  <div class="sg" id="dStats"></div>
+  <!-- Statuts clients -->
+  <div class="status-row" id="dStatusRow"></div>
+  <div class="sh">
+    <h2>Clients débiteurs</h2>
+    <span class="badge" id="dCount">0</span>
+  </div>
+  <div id="dList" style="display:flex;flex-direction:column;gap:9px"></div>
+</section>
+
+<!-- VIEW: CLIENTS -->
+<section class="view" id="vClients">
+  <div class="sw">
+    <svg class="si" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+    <input type="search" id="searchIn" placeholder="Rechercher un client…" autocomplete="off"/>
+  </div>
+  <div class="chips" id="sortChips">
+    <button class="chip a" data-sort="name">Nom A–Z</button>
+    <button class="chip" data-sort="debt">+ de dettes</button>
+    <button class="chip" data-sort="paid">+ payé</button>
+    <button class="chip" data-sort="recent">Récent</button>
+  </div>
+  <div id="cList" style="display:flex;flex-direction:column;gap:9px"></div>
+  <button class="fab btn-no-print" id="btnAddClient">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+  </button>
+</section>
+
+<!-- VIEW: DETAIL -->
+<section class="view" id="vDetail">
+  <div id="dHero"></div>
+  <div class="ds" id="dStat"></div>
+
+  <!-- DATE FILTER for client detail -->
+  <div class="sh btn-no-print">
+    <h2>Filtrer par date</h2>
+    <button class="btn-filter" id="btnToggleDetailFilter">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+      Filtre
+    </button>
+  </div>
+  <div id="detailFilterBar" class="df-bar btn-no-print" style="display:none">
+    <div class="df-row">
+      <span class="df-label">Période</span>
+      <div class="df-inputs">
+        <input type="date" class="df-input" id="dfDetailFrom" title="Du"/>
+        <span class="df-sep">→</span>
+        <input type="date" class="df-input" id="dfDetailTo" title="Au"/>
+      </div>
+      <button class="df-reset" id="dfDetailReset">✕ Effacer</button>
+    </div>
+    <div class="df-presets">
+      <button class="df-chip" data-preset="detail" data-p="today">Aujourd'hui</button>
+      <button class="df-chip" data-preset="detail" data-p="week">Cette semaine</button>
+      <button class="df-chip" data-preset="detail" data-p="month">Ce mois</button>
+      <button class="df-chip" data-preset="detail" data-p="quarter">Ce trimestre</button>
+      <button class="df-chip" data-preset="detail" data-p="year">Cette année</button>
+    </div>
+  </div>
+  <div id="detailFilterSummary" style="display:none"></div>
+
+  <div class="sh">
+    <h2>Dettes <span id="detailDebtCount" style="font-size:11px;color:var(--text3);font-weight:500"></span></h2>
+    <div style="display:flex;gap:6px;align-items:center">
+      <button class="btn btn-g btn-sm btn-no-print" id="btnPrintClient">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        Imprimer
+      </button>
+      <button class="btn btn-p btn-sm btn-no-print" id="btnAddDebt">+ Dette</button>
+    </div>
+  </div>
+  <div id="debtList" style="display:flex;flex-direction:column;gap:10px"></div>
+</section>
+
+<!-- VIEW: HISTORY -->
+<section class="view" id="vHistory">
+  <div class="sh">
+    <h2>Tous les paiements</h2>
+    <div style="display:flex;align-items:center;gap:7px">
+      <span class="badge" id="hCount">0</span>
+      <button class="btn-filter" id="btnToggleHistFilter">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+        Filtre
+      </button>
+    </div>
+  </div>
+
+  <!-- History Filter Bar -->
+  <div id="histFilterBar" class="df-bar btn-no-print" style="display:none">
+    <div class="df-row">
+      <span class="df-label">Période</span>
+      <div class="df-inputs">
+        <input type="date" class="df-input" id="dfHistFrom" title="Du"/>
+        <span class="df-sep">→</span>
+        <input type="date" class="df-input" id="dfHistTo" title="Au"/>
+      </div>
+      <button class="df-reset" id="dfHistReset">✕ Effacer</button>
+    </div>
+    <div class="df-presets">
+      <button class="df-chip" data-preset="hist" data-p="today">Aujourd'hui</button>
+      <button class="df-chip" data-preset="hist" data-p="week">Cette semaine</button>
+      <button class="df-chip" data-preset="hist" data-p="month">Ce mois</button>
+      <button class="df-chip" data-preset="hist" data-p="quarter">Ce trimestre</button>
+      <button class="df-chip" data-preset="hist" data-p="year">Cette année</button>
+    </div>
+    <!-- Client filter for history -->
+    <div class="df-row">
+      <span class="df-label">Client</span>
+      <div class="df-inputs">
+        <input type="text" class="df-input" id="dfHistClient" placeholder="Filtrer par nom de client…"/>
+      </div>
+    </div>
+  </div>
+
+  <!-- Total bar -->
+  <div id="histTotalBar" class="h-total" style="display:none">
+    <div class="h-total-lbl">Total encaissé sur la période</div>
+    <div class="h-total-val" id="histTotalVal">0,000 DT</div>
+  </div>
+
+  <div id="hList" style="display:flex;flex-direction:column;gap:8px"></div>
+</section>
+
+<!-- BOTTOM NAV / SIDEBAR -->
+<nav class="bnav btn-no-print">
+  <!-- Sidebar brand (visible on desktop only) -->
+  <div class="sidebar-brand">
+    <div class="sidebar-logo">ooredoo</div>
+    <div class="sidebar-sub">Belguesmi Nader</div>
+  </div>
+
+  <button class="bn a" data-v="vDash">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+    Dashboard
+  </button>
+  <button class="bn" data-v="vClients">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    Clients
+  </button>
+  <button class="bn" data-v="vHistory">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+    Historique
+  </button>
+
+  <!-- Sidebar footer (desktop only) -->
+  <div class="sidebar-footer">
+    <div class="sidebar-footer-txt">🔥 Firebase connecté</div>
+    <div id="sidebarSyncStatus" style="font-size:10px;color:var(--text3);margin-top:2px">—</div>
+  </div>
+</nav>
+
+</div><!-- #app -->
+</div><!-- #appShell -->
+
+<!-- ===== MODAL: CLIENT ===== -->
+<div class="mo" id="mClient">
+  <div class="mb">
+    <div class="cf">
+      <button class="m-close" data-close="mClient"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+      <h2 class="m-title" id="mClientTitle">Nouveau client</h2>
+    </div>
+    <div class="fg"><label>Nom complet *</label>
+      <input type="text" id="cNom" placeholder="Ex: Ahmed Ben Ali" autocomplete="off"/>
+      <span class="f-err" id="eNom">Le nom est requis</span></div>
+    <div class="fg"><label>Téléphone</label>
+      <input type="tel" id="cTel" placeholder="Ex: 55 123 456"/></div>
+    <button class="btn btn-p" id="btnSaveClient">Enregistrer</button>
+    <div style="height:7px"></div>
+    <button class="btn btn-g" data-close="mClient">Annuler</button>
+  </div>
+</div>
+
+<!-- ===== MODAL: DETTE ===== -->
+<div class="mo" id="mDebt">
+  <div class="mb">
+    <div class="cf">
+      <button class="m-close" data-close="mDebt"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+      <h2 class="m-title">Nouvelle dette</h2>
+    </div>
+    <div class="fg"><label>Montant total (DT) *</label>
+      <input type="number" id="dMontant" placeholder="0.000" step="0.001" min="0.001"/>
+      <span class="f-err" id="eDebt">Montant invalide</span></div>
+    <div class="fg"><label>Description</label>
+      <input type="text" id="dDesc" placeholder="Ex: Achat marchandise"/></div>
+    <div class="fg"><label>Date</label>
+      <input type="date" id="dDate"/></div>
+    <button class="btn btn-p" id="btnSaveDebt">Ajouter la dette</button>
+    <div style="height:7px"></div>
+    <button class="btn btn-g" data-close="mDebt">Annuler</button>
+  </div>
+</div>
+
+<!-- ===== MODAL: PAIEMENT ===== -->
+<div class="mo" id="mPay">
+  <div class="mb">
+    <div class="cf">
+      <button class="m-close" data-close="mPay"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+      <h2 class="m-title">Ajouter un paiement</h2>
+    </div>
+    <div id="pInfo" style="background:var(--surface2);border-radius:var(--radius-xs);padding:9px 11px;margin-bottom:12px;font-size:12px;color:var(--text2)"></div>
+
+    <!-- Tranche selector — shown only if reconData.tranches exist -->
+    <div id="pTrancheBlock" style="display:none;margin-bottom:12px">
+      <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Lier à une tranche</label>
+      <select id="pTrancheSelect" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px;color:var(--text);background:var(--bg);outline:none;font-family:var(--font)">
+        <option value="">— Paiement libre (sans tranche) —</option>
+      </select>
+      <span class="f-hint" style="margin-top:4px">Si vous liez à une tranche, son montant sera pré-rempli et elle sera marquée comme payée automatiquement.</span>
+    </div>
+
+    <div class="fg"><label>Montant (DT) *</label>
+      <input type="number" id="pMontant" placeholder="0.000" step="0.001" min="0.001"/>
+      <span class="f-hint" id="pHint"></span>
+      <span class="f-err" id="ePay">Montant invalide ou supérieur au reste dû</span></div>
+    <div class="fg"><label>Date du paiement</label>
+      <input type="date" id="pDate"/></div>
+    <button class="btn btn-p" id="btnSavePay">Enregistrer le paiement</button>
+    <div style="height:7px"></div>
+    <button class="btn btn-g" data-close="mPay">Annuler</button>
+  </div>
+</div>
+
+<!-- ===== MODAL: SETTINGS ===== -->
+<div class="mo" id="mSettings">
+  <div class="mb">
+    <div class="cf">
+      <button class="m-close" data-close="mSettings"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+      <h2 class="m-title">Paramètres</h2>
+    </div>
+
+    <!-- Firebase info -->
+    <div style="background:var(--blue-bg);border:1px solid var(--blue);border-radius:var(--radius-xs);padding:10px 12px;margin-bottom:12px;font-size:12px">
+      <div style="font-weight:700;color:var(--blue);margin-bottom:3px">🔥 Firebase Firestore</div>
+      <div style="color:var(--text2)">Projet: <b>ooredoonaderthala</b></div>
+      <div style="color:var(--text2);margin-top:2px">Statut: <span id="fbStatusTxt" style="font-weight:600">—</span></div>
+    </div>
+
+    <div class="settings-sec-title">🖨️ Impression</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px">
+      <button class="btn btn-g" id="btnPrintAll">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        Imprimer tous les clients
+      </button>
+      <button class="btn btn-g" id="btnPrintHistory">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        Imprimer l'historique
+      </button>
+    </div>
+    <hr style="border:none;border-top:1px solid var(--border);margin:4px 0 10px"/>
+
+    <div class="settings-sec-title">💾 Sauvegarde locale</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px">
+      <button class="btn btn-g" id="btnExport">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Exporter JSON (backup)
+      </button>
+      <button class="btn btn-g" id="btnImport">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Importer JSON vers Firebase
+      </button>
+      <input type="file" id="importFile" accept=".json" style="display:none"/>
+    </div>
+    <hr style="border:none;border-top:1px solid var(--border);margin:4px 0 10px"/>
+
+    <div class="settings-sec-title">🔐 Sécurité</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px">
+      <button class="btn btn-g" id="btnChangePwd">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        Changer le mot de passe
+      </button>
+      <button class="btn btn-d" id="btnLogout">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        Se déconnecter
+      </button>
+    </div>
+    <hr style="border:none;border-top:1px solid var(--border);margin:4px 0 10px"/>
+
+    <div class="settings-sec-title">⚠️ Danger</div>
+    <button class="btn btn-d" id="btnReset">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/></svg>
+      Supprimer TOUTES les données Firebase
+    </button>
+    <p style="font-size:10px;color:var(--text3);text-align:center;margin-top:16px">
+      Debt Manager v2.0 · Firebase Firestore<br>Ooredoo Tunisia · Belguesmi Nader
+    </p>
+  </div>
+</div>
+
+<!-- ===== MODAL: CHANGE PASSWORD ===== -->
+<div class="mo" id="mChangePwd">
+  <div class="mb">
+    <div class="cf">
+      <button class="m-close" data-close="mChangePwd"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+      <h2 class="m-title">Changer le mot de passe</h2>
+    </div>
+    <div class="fg"><label>Identifiant *</label><input type="text" id="pwdUser" placeholder="Identifiant admin"/></div>
+    <div class="fg"><label>Ancien mot de passe *</label><input type="password" id="pwdOld" placeholder="••••••••"/></div>
+    <div class="fg"><label>Nouveau mot de passe *</label><input type="password" id="pwdNew" placeholder="Minimum 4 caractères"/></div>
+    <div class="fg"><label>Confirmer nouveau *</label><input type="password" id="pwdNew2" placeholder="Répéter le mot de passe"/></div>
+    <div class="f-err" id="ePwd" style="margin-bottom:10px"></div>
+    <button class="btn btn-p" id="btnSavePwd">Mettre à jour</button>
+    <div style="height:7px"></div>
+    <button class="btn btn-g" data-close="mChangePwd">Annuler</button>
+  </div>
+</div>
+
+<!-- ===== MODAL: RECONNAISSANCE DE DETTE ===== -->
+<div class="mo" id="mRecon" style="align-items:flex-start;padding-top:0">
+  <div class="mb" style="border-radius:0;max-height:100dvh;min-height:60dvh;padding-bottom:24px">
+    <!-- Header -->
+    <div style="background:linear-gradient(135deg,#1a1a2e,#E4002B);padding:16px 18px;
+      display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:10;margin:-20px -18px 16px">
+      <button class="m-close" data-close="mRecon" style="background:rgba(255,255,255,.18);color:#fff;flex-shrink:0">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+      <div>
+        <div style="font-size:15px;font-weight:800;color:#fff">📄 Reconnaissance de dette</div>
+        <div style="font-size:10px;color:rgba(255,255,255,.7);margin-top:2px">OOREDOO · Agence Belguesmi Nader · THALA</div>
+      </div>
+    </div>
+
+    <!-- Infos débiteur -->
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">👤 Informations du débiteur</div>
+    <div class="fg"><label>Nom complet *</label><input type="text" id="rNom" placeholder="Prénom et NOM"/></div>
+    <div class="fg"><label>N° CIN *</label><input type="text" id="rCin" placeholder="Ex: 12345678" maxlength="8"/></div>
+    <div class="fg"><label>Adresse</label><input type="text" id="rAddr" placeholder="Ex: 12 Rue République, Thala"/></div>
+    <div class="fg"><label>Objet de la dette / Description</label>
+      <input type="text" id="rDesc" placeholder="Ex: Achat marchandise, Fournitures bureau…"/>
+      <span class="f-hint">Apparaîtra sur la reconnaissance de dette</span></div>
+
+    <!-- Montant & tranches -->
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin:14px 0 10px">💳 Montant & Plan de remboursement</div>
+    <div class="fg">
+      <label>Montant total dû (DT)</label>
+      <input type="number" id="rMontant" placeholder="0.000" step="0.001" readonly/>
+      <span class="f-hint">Calculé depuis les dettes en cours</span>
+    </div>
+    <div class="fg">
+      <label>Mode de remboursement</label>
+      <select id="rMode">
+        <option value="unique">Paiement unique (1 seule reconnaissance)</option>
+        <option value="tranches">Paiement en tranches (une reconnaissance par tranche)</option>
+      </select>
+    </div>
+
+    <!-- Paiement unique -->
+    <div id="rSingleBlock">
+      <div class="fg"><label>Date limite de paiement *</label><input type="date" id="rDateLimite"/></div>
+    </div>
+
+    <!-- Tranches -->
+    <div id="rTranchesBlock" style="display:none">
+      <div class="fg">
+        <label>Nombre de tranches</label>
+        <select id="rNbTranches">
+          <option value="2">2 tranches</option>
+          <option value="3" selected>3 tranches</option>
+          <option value="4">4 tranches</option>
+          <option value="5">5 tranches</option>
+          <option value="6">6 tranches</option>
+          <option value="custom">Personnalisé</option>
+        </select>
+      </div>
+      <div id="rTranchesConfig" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
+      <div id="rTranchesTotal" style="background:var(--surface2);border-radius:var(--radius-xs);padding:9px 12px;font-size:12px;color:var(--text2);display:none"></div>
+    </div>
+
+    <!-- Date signature -->
+    <div class="fg" style="margin-top:4px"><label>Date de signature</label><input type="date" id="rDateSign"/></div>
+
+    <div class="f-err" id="eRecon" style="margin-bottom:10px;display:none"></div>
+
+    <!-- Signature -->
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">✍️ Signature du débiteur *</div>
+    <div class="sig-wrap" style="margin-bottom:12px">
+      <canvas id="sigCanvas" class="sig-canvas" height="130"></canvas>
+      <div class="sig-toolbar">
+        <span class="sig-lbl" id="sigStatus">Signez ici (doigt ou souris)</span>
+        <button class="sig-clear" id="btnSigClear">✕ Effacer</button>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button class="btn btn-p" id="btnGenPDF">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Générer & Télécharger PDF(s)
+      </button>
+      <button class="btn btn-g" id="btnPreviewRecon">👁 Aperçu</button>
+      <button class="btn btn-g" data-close="mRecon">Annuler</button>
+    </div>
+    <div id="reconPreviewArea" style="display:none;margin-top:16px">
+      <div style="font-size:14px;font-weight:700;margin-bottom:8px">Aperçu</div>
+      <div id="reconPreviewDoc" class="pdf-prev"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: CONTENTIEUX ===== -->
+<div class="mo" id="mContentieux">
+  <div class="mb">
+    <div class="cf">
+      <button class="m-close" data-close="mContentieux"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+      <h2 class="m-title">⚠️ Message Contentieux</h2>
+    </div>
+    <div class="cnt-bar">🚨 Dernier recours légal avant transmission du dossier.</div>
+    <div id="cntMsgBody" style="background:var(--surface2);border-radius:var(--radius-sm);
+      border:1px solid var(--border);padding:11px 12px;font-size:11px;line-height:1.7;
+      color:var(--text2);white-space:pre-wrap;max-height:280px;overflow-y:auto"></div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn" style="background:#25D366;color:#fff;flex:1" id="btnCntWA">📱 WhatsApp</button>
+      <button class="btn btn-g" style="flex:1" id="btnCntCopy">📋 Copier</button>
+    </div>
+    <div style="height:7px"></div>
+    <button class="btn btn-g" data-close="mContentieux">Fermer</button>
+  </div>
+</div>
+
+<!-- CONFIRM -->
+<div class="cov" id="confOv">
+  <div class="cb">
+    <h3 class="c-title" id="confTitle">Confirmer</h3>
+    <p class="c-msg" id="confMsg">Êtes-vous sûr ?</p>
+    <div class="c-acts">
+      <button class="btn btn-g" id="confNo">Annuler</button>
+      <button class="btn btn-d" id="confYes">Confirmer</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast" role="alert" aria-live="polite"></div>
+
+<script>
+/* ================================================================
+   DEBT MANAGER v2.1 — Firebase Firestore + Offline PWA
+   Ooredoo Tunisia · Belguesmi Nader
+================================================================ */
+
+/* ================================================================
+   FIREBASE CONFIG & INIT
+================================================================ */
+const firebaseConfig = {
+  apiKey:            "AIzaSyBxvQIHfYN2HoO58jfXnUiK_P2x_K_nYWA",
+  authDomain:        "ooredoonaderthala.firebaseapp.com",
+  projectId:         "ooredoonaderthala",
+  storageBucket:     "ooredoonaderthala.firebasestorage.app",
+  messagingSenderId: "686612909524",
+  appId:             "1:686612909524:web:675c62217b0239bff29a41"
+};
+
+let db;           // Firestore instance
+let unsubscribe;  // Real-time listener unsubscribe fn
+let isOnline = navigator.onLine;
+
+async function initFirebase() {
+  setFbLoading('Initialisation Firebase…');
+  try {
+    const fbApp = firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore(fbApp);
+
+    // Enable offline persistence (IndexedDB cache)
+    await db.enablePersistence({ synchronizeTabs: true })
+      .catch(err => {
+        if(err.code === 'failed-precondition') {
+          console.warn('Persistence: multiple tabs open');
+        } else if(err.code === 'unimplemented') {
+          console.warn('Persistence not supported in this browser');
+        }
+      });
+
+    setFbLoading('Chargement des données…');
+    return true;
+  } catch(err) {
+    console.error('Firebase init error:', err);
+    setFbLoading('⚠️ Erreur Firebase — mode hors-ligne');
+    await delay(2000);
+    return false;
+  }
+}
+
+function setFbLoading(msg) {
+  document.getElementById('fbLoadTxt').textContent = msg;
+}
+
+/* ================================================================
+   CONSTANTS & STATE
+================================================================ */
+const TK   = 'dm_theme';
+const AK   = 'dm_admin';
+const SESS = 'dm_session';
+const DEFAULT_ADMIN = { user:'admin', pass:'admin123' };
+const COLL = 'clients';
+const RK   = 'dm_recon_v1'; // kept for migration only
+const NK   = 'dm_notif_v1'; // kept for migration only
+
+// ── Recon helpers — stored IN client object (auto-syncs Firebase) ──
+const getRecon  = cid=>{
+  const c=getC(cid); return c?.reconData||null;
+};
+const saveRecon = (cid,d)=>{
+  const c=getC(cid); if(!c) return;
+  c.reconData=d;
+  fbSaveClient(c); // sync to Firebase
+};
+
+// ── Warn log helpers — stored IN client object (auto-syncs Firebase) ──
+const getClientLog   = cid=>{ const c=getC(cid); return c?.warnLog||[false,false,false]; };
+const markClientWarn = (cid,day)=>{
+  const c=getC(cid); if(!c) return;
+  if(!c.warnLog) c.warnLog=[false,false,false];
+  c.warnLog[day-1]=true;
+  fbSaveClient(c); // sync to Firebase
+};
+const resetClientWarn= cid=>{
+  const c=getC(cid); if(!c) return;
+  c.warnLog=[false,false,false];
+  fbSaveClient(c);
+};
+
+let clients    = [];
+let curClient  = null;
+let curDebtId  = null;
+let sortMode   = 'name';
+let searchQ    = '';
+let installEvt = null;
+let confirmCb  = null;
+let curView    = 'vDash';
+// Status filter (from dashboard)
+let statusFilter = '';
+// Signature state
+let sigHasMark=false, sigDrawing=false;
+// Contentieux client
+let cntClientId=null;
+
+/* ---------- DATE FILTER STATE ---------- */
+let dfDetailFrom='', dfDetailTo='', dfDetailOpen=false;
+let dfHistFrom='', dfHistTo='', dfHistClient='', dfHistOpen=false;
+
+/* ================================================================
+   HELPERS
+================================================================ */
+const uid   = () => Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const esc   = s  => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const fmt$  = n  => (parseFloat(n)||0).toLocaleString('fr-TN',{minimumFractionDigits:2,maximumFractionDigits:3})+' DT';
+const fmtD  = d  => new Date(d).toLocaleDateString('fr-FR',{day:'2-digit',month:'short',year:'numeric'});
+const today = () => new Date().toISOString().slice(0,10);
+const ini   = n  => n.trim().split(' ').slice(0,2).map(w=>w[0]||'').join('').toUpperCase()||'?';
+const delay = ms => new Promise(r=>setTimeout(r,ms));
+const getC  = id => clients.find(c=>c.id===id);
+const getD  = (c,id) => c.dettes.find(d=>d.id===id);
+
+/* ---------- DATE FILTER HELPERS ---------- */
+// Returns {from, to} ISO strings for a preset name
+function presetRange(p) {
+  const now  = new Date();
+  const pad  = n => String(n).padStart(2,'0');
+  const iso  = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  let from, to = iso(now);
+  if(p==='today'){
+    from = to;
+  } else if(p==='week'){
+    const d = new Date(now); d.setDate(now.getDate() - now.getDay() + (now.getDay()===0?-6:1));
+    from = iso(d);
+  } else if(p==='month'){
+    from = `${now.getFullYear()}-${pad(now.getMonth()+1)}-01`;
+  } else if(p==='quarter'){
+    const q = Math.floor(now.getMonth()/3);
+    from = `${now.getFullYear()}-${pad(q*3+1)}-01`;
+  } else if(p==='year'){
+    from = `${now.getFullYear()}-01-01`;
+  }
+  return { from, to };
+}
+
+// Returns true if ISO date d is within [from, to] (empty = no bound)
+function inRange(d, from, to) {
+  if(from && d < from) return false;
+  if(to   && d > to)   return false;
+  return true;
+}
+
+const debtTot = d => {
+  const paid = d.paiements.reduce((s,p)=>s+p.montant,0);
+  return { paid, reste: Math.max(0, d.montant_total - paid) };
+};
+const clientTot = c => {
+  let total=0,paid=0,last=null;
+  c.dettes.forEach(d=>{
+    total+=d.montant_total;
+    d.paiements.forEach(p=>{ paid+=p.montant; if(!last||p.date>last) last=p.date; });
+  });
+  return { total, paid, reste:Math.max(0,total-paid), last };
+};
+const globalTot = () => {
+  let t=0,p=0;
+  clients.forEach(c=>{ const x=clientTot(c); t+=x.total; p+=x.paid; });
+  return { total:t, paid:p, reste:t-p, nbC:clients.length,
+           nbD:clients.filter(c=>clientTot(c).reste>0).length };
+};
+const allPays = () => {
+  const a=[];
+  clients.forEach(c=>c.dettes.forEach(d=>d.paiements.forEach(p=>
+    a.push({clientName:c.nom,clientId:c.id,debtId:d.id,...p})
+  )));
+  return a.sort((a,b)=>b.date.localeCompare(a.date));
+};
+
+// Date utils
+const addDays=(iso,n)=>{const d=new Date(iso);d.setDate(d.getDate()+n);return d.toISOString().slice(0,10)};
+const dayDiff=iso=>Math.round((new Date(today()+'T00:00:00')-new Date(iso+'T00:00:00'))/(864e5));
+
+// Status système
+function clientStatus(c){
+  const t=clientTot(c); if(t.reste<=0) return 'normal';
+  const log=getClientLog(c.id);
+  const sent=log.filter(Boolean).length;
+  if(sent>=3) return 'contentieux';
+  if(sent>=1) return 'en_retard';
+  return c.dettes.some(d=>{const{reste}=debtTot(d);return reste>0&&d.date<today()})?'en_retard':'normal';
+}
+const ST_CSS={normal:'sp-n',en_retard:'sp-r',contentieux:'sp-c'};
+const ST_LBL={normal:'🟢 À jour',en_retard:'🟡 En retard',contentieux:'🔴 Contentieux'};
+window.filterByStatus=s=>{statusFilter=s;navigate('vClients')};
+
+/* ================================================================
+   ADMIN AUTH (stored in localStorage — local only)
+================================================================ */
+const getAdmin  = ()=> { try{ return JSON.parse(localStorage.getItem(AK))||DEFAULT_ADMIN; }catch{ return DEFAULT_ADMIN; } };
+const saveAdmin = a => localStorage.setItem(AK, JSON.stringify(a));
+const isLogged  = ()=> sessionStorage.getItem(SESS)==='1';
+const setLogged = v => v ? sessionStorage.setItem(SESS,'1') : sessionStorage.removeItem(SESS);
+
+/* ================================================================
+   SYNC STATUS
+================================================================ */
+let fbConnected = false;
+
+function setSyncStatus(status) {
+  const dot  = document.getElementById('syncDot');
+  const lbl  = document.getElementById('syncLabel');
+  const stat = document.getElementById('fbStatusTxt');
+  const side = document.getElementById('sidebarSyncStatus');
+  if(!dot) return;
+  dot.className = `sync-dot ${status}`;
+  const labels = { online:'sync', offline:'offline', syncing:'...' };
+  const stats  = { online:'🟢 Connecté & synchronisé', offline:'🟠 Hors-ligne (cache local)', syncing:'🔵 Synchronisation…' };
+  if(lbl)  lbl.textContent  = labels[status]||'';
+  if(stat) stat.textContent = stats[status]||'';
+  if(side) side.textContent = stats[status]||'';
+  document.getElementById('offlineBanner')?.classList.toggle('show', status==='offline');
+}
+
+// Monitor network
+// Online/offline handled in boot section
+
+/* ================================================================
+   FIRESTORE CRUD — Offline-first with pending queue
+================================================================ */
+const PK='dm_pending'; // pending writes queue key
+
+function getPending(){ try{ return JSON.parse(localStorage.getItem(PK)||'[]'); }catch{ return []; } }
+function savePending(q){ localStorage.setItem(PK,JSON.stringify(q)); }
+function queueWrite(type,payload){
+  const q=getPending();
+  // Remove any existing entry for same client id to avoid duplicates
+  const filtered=q.filter(x=>!(x.type===type&&x.payload?.id===payload?.id));
+  filtered.push({type,payload,ts:Date.now()});
+  savePending(filtered);
+}
+function queueDelete(id){
+  const q=getPending().filter(x=>!(x.payload?.id===id));
+  q.push({type:'delete',payload:{id},ts:Date.now()});
+  savePending(q);
+}
+
+// Flush all pending writes to Firebase when online
+async function flushPending(){
+  if(!db||!isOnline) return;
+  const q=getPending();
+  if(!q.length) return;
+  let flushed=0;
+  for(const op of q){
+    try{
+      if(op.type==='save'){
+        await db.collection(COLL).doc(op.payload.id).set(op.payload);
+        flushed++;
+      } else if(op.type==='delete'){
+        await db.collection(COLL).doc(op.payload.id).delete();
+        flushed++;
+      }
+    }catch(e){ console.error('Flush error:',e); break; }
+  }
+  if(flushed>0){
+    savePending(getPending().slice(flushed));
+    toast(`🔄 ${flushed} modification(s) synchronisée(s) avec Firebase`,'info');
+    updatePendingBadge();
+  }
+}
+
+function updatePendingBadge(){
+  const n=getPending().length;
+  const el=document.getElementById('pendingBadge');
+  if(el){ el.textContent=n>0?`${n} en attente`:''; el.style.display=n>0?'block':'none'; }
+}
+
+// Save single client doc — local first, then Firebase or queue
+async function fbSaveClient(client) {
+  // 1. Update local array immediately
+  const idx=clients.findIndex(c=>c.id===client.id);
+  if(idx>=0) clients[idx]=client; else clients.push(client);
+  localStorage.setItem('dm_cache',JSON.stringify(clients));
+  renderCurrentView();
+
+  // 2. Online → write to Firebase directly
+  if(db && isOnline){
+    setSyncStatus('syncing');
+    try{
+      await db.collection(COLL).doc(client.id).set(client);
+      setSyncStatus('online');
+      return;
+    }catch(e){ console.error('fbSaveClient:', e); }
+  }
+
+  // 3. Offline → queue for later
+  queueWrite('save', client);
+  setSyncStatus('offline');
+  updatePendingBadge();
+}
+
+// Delete single client doc — local first, then Firebase or queue
+async function fbDeleteClient(id) {
+  clients=clients.filter(c=>c.id!==id);
+  localStorage.setItem('dm_cache',JSON.stringify(clients));
+
+  if(db && isOnline){
+    setSyncStatus('syncing');
+    try{
+      await db.collection(COLL).doc(id).delete();
+      setSyncStatus('online');
+      return;
+    }catch(e){ console.error('fbDeleteClient:', e); }
+  }
+
+  queueDelete(id);
+  setSyncStatus('offline');
+  updatePendingBadge();
+}
+
+// Real-time listener
+function startRealtimeSync() {
+  if(!db){ setSyncStatus('offline'); return; }
+  if(unsubscribe){ unsubscribe(); unsubscribe=null; }
+  setSyncStatus('syncing');
+  unsubscribe = db.collection(COLL)
+    .onSnapshot(
+      {includeMetadataChanges: false},
+      snapshot => {
+        clients = snapshot.docs.map(doc => doc.data());
+        setSyncStatus(isOnline?'online':'offline');
+        fbConnected = true;
+        localStorage.setItem('dm_cache', JSON.stringify(clients));
+        renderCurrentView();
+        // Flush any pending writes now that we're connected
+        flushPending();
+      },
+      err => {
+        console.error('Snapshot error:', err.code, err.message);
+        setSyncStatus('offline');
+        unsubscribe=null;
+        setTimeout(()=>{ if(db && isOnline) startRealtimeSync(); }, 5000);
+        try{
+          const cached=JSON.parse(localStorage.getItem('dm_cache')||'[]');
+          if(cached.length>0&&clients.length===0){ clients=cached; renderCurrentView(); }
+        }catch{}
+      }
+    );
+}
+
+/* ================================================================
+   LOGIN SCREEN
+================================================================ */
+function showLoginScreen() {
+  document.getElementById('fbLoading').classList.add('hidden');
+  document.getElementById('loginScreen').classList.remove('hidden');
+  setTimeout(()=>document.getElementById('loginUser')?.focus(), 300);
+}
+
+function showApp() {
+  document.getElementById('fbLoading').classList.add('hidden');
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('appShell').classList.add('visible');
+  if(!db){
+    try{ clients=JSON.parse(localStorage.getItem('dm_cache')||'[]'); }catch{ clients=[]; }
+    setSyncStatus('offline');
+  }
+  initTheme();
+  navigate('vDash', false);
+  // Firebase sync lancé depuis window.load event — pas besoin ici
+  if(db) startRealtimeSync();
+}
+
+document.getElementById('btnLogin').onclick = ()=>tryLogin();
+document.getElementById('loginPass').onkeydown = e=>{ if(e.key==='Enter') tryLogin(); };
+document.getElementById('loginUser').onkeydown = e=>{ if(e.key==='Enter') document.getElementById('loginPass').focus(); };
+
+function tryLogin(){
+  const u=document.getElementById('loginUser').value.trim();
+  const p=document.getElementById('loginPass').value;
+  const a=getAdmin();
+  const err=document.getElementById('loginErr');
+  if(u===a.user && p===a.pass){
+    err.classList.remove('show');
+    setLogged(true);
+    showApp();
+  } else {
+    err.classList.add('show');
+    document.getElementById('loginPass').value='';
+    document.getElementById('loginPass').focus();
+    const card=document.querySelector('.login-card');
+    card.style.animation='shake .4s ease';
+    setTimeout(()=>card.style.animation='',500);
+  }
+}
+
+// Eye toggle
+document.getElementById('eyeToggle').onclick=()=>{
+  const inp=document.getElementById('loginPass');
+  inp.type=inp.type==='password'?'text':'password';
+  document.getElementById('eyeToggle').textContent=inp.type==='password'?'👁':'🙈';
+};
+
+// Logout
+document.getElementById('btnLogout').onclick=()=>{
+  closeM('mSettings');
+  confirm2('Déconnexion','Voulez-vous vous déconnecter ?','Se déconnecter',()=>{
+    setLogged(false);
+    if(unsubscribe) unsubscribe();
+    clients=[];
+    document.getElementById('appShell').classList.remove('visible');
+    document.getElementById('loginScreen').classList.remove('hidden');
+    document.getElementById('loginUser').value='';
+    document.getElementById('loginPass').value='';
+    toast('Déconnecté avec succès','warn');
+  });
+};
+
+// Change password
+document.getElementById('btnChangePwd').onclick=()=>{
+  ['pwdUser','pwdOld','pwdNew','pwdNew2'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('ePwd').style.display='none';
+  closeM('mSettings'); openM('mChangePwd');
+};
+document.getElementById('btnSavePwd').onclick=()=>{
+  const u=document.getElementById('pwdUser').value.trim();
+  const o=document.getElementById('pwdOld').value;
+  const n1=document.getElementById('pwdNew').value;
+  const n2=document.getElementById('pwdNew2').value;
+  const a=getAdmin();
+  if(!u||!o||!n1||!n2){ showPwdErr('Tous les champs sont requis'); return; }
+  if(u!==a.user||o!==a.pass){ showPwdErr('Identifiant ou ancien mot de passe incorrect'); return; }
+  if(n1.length<4){ showPwdErr('Minimum 4 caractères requis'); return; }
+  if(n1!==n2){ showPwdErr('Les mots de passe ne correspondent pas'); return; }
+  saveAdmin({user:u,pass:n1});
+  closeM('mChangePwd');
+  toast('Mot de passe mis à jour ✓');
+};
+function showPwdErr(msg){
+  const el=document.getElementById('ePwd');
+  el.textContent=msg; el.style.display='block';
+}
+
+/* ================================================================
+   LOGO & THEME
+================================================================ */
+const renderLogo=()=>{
+  const dark=document.documentElement.getAttribute('data-theme')==='dark';
+  document.getElementById('logoEl').innerHTML=
+    `<svg width="82" height="20" viewBox="0 0 150 36" xmlns="http://www.w3.org/2000/svg">
+       <text x="0" y="28" font-family="Montserrat,sans-serif" font-weight="900" font-size="28"
+         fill="${dark?'#E4002B':'#fff'}">ooredoo</text>
+     </svg>`;
+};
+const initTheme=()=>{
+  const s=localStorage.getItem(TK)||(window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');
+  applyTheme(s);
+};
+const applyTheme=t=>{
+  document.documentElement.setAttribute('data-theme',t);
+  localStorage.setItem(TK,t);
+  document.getElementById('themeColor').content=t==='dark'?'#0D0D12':'#E4002B';
+  const ico=document.getElementById('themeIco');
+  ico.innerHTML=t==='dark'
+    ?`<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>`
+    :`<circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>`;
+  renderLogo();
+};
+document.getElementById('btnTheme').onclick=()=>
+  applyTheme(document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark');
+
+/* ================================================================
+   TOAST
+================================================================ */
+let tTimer;
+const toast=(msg,type='success')=>{
+  const el=document.getElementById('toast');
+  el.className=`toast ${type}`;
+  el.innerHTML=(type==='success'?'✅':type==='error'?'❌':type==='info'?'ℹ️':'⚠️')+' '+msg;
+  el.classList.add('show');
+  clearTimeout(tTimer);
+  tTimer=setTimeout(()=>el.classList.remove('show'),3500);
+};
+
+/* ================================================================
+   CONFIRM
+================================================================ */
+const confirm2=(title,msg,okLbl,cb)=>{
+  confirmCb=cb;
+  document.getElementById('confTitle').textContent=title;
+  document.getElementById('confMsg').textContent=msg;
+  document.getElementById('confYes').textContent=okLbl;
+  document.getElementById('confOv').classList.add('open');
+};
+document.getElementById('confNo').onclick =()=>{ document.getElementById('confOv').classList.remove('open'); confirmCb=null; };
+document.getElementById('confYes').onclick=()=>{ document.getElementById('confOv').classList.remove('open'); confirmCb&&confirmCb(); confirmCb=null; };
+
+/* ================================================================
+   MODALS
+================================================================ */
+const openM =id=>document.getElementById(id).classList.add('open');
+const closeM=id=>document.getElementById(id).classList.remove('open');
+document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>closeM(b.dataset.close));
+document.querySelectorAll('.mo').forEach(ov=>ov.onclick=e=>{ if(e.target===ov) closeM(ov.id); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'){
+  document.querySelectorAll('.mo.open').forEach(m=>m.classList.remove('open'));
+  document.getElementById('confOv').classList.remove('open');
+}});
+
+/* ================================================================
+   NAVIGATE
+================================================================ */
+const navigate=id=>{
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  curView=id;
+  const titles={vDash:'Debt Manager',vClients:'Clients',vDetail:'Détail client',vHistory:'Historique'};
+  document.getElementById('tbTitle').textContent=titles[id]||'';
+  document.getElementById('btnBack').style.display=id==='vDetail'?'flex':'none';
+  document.querySelectorAll('.bn').forEach(b=>b.classList.toggle('a',b.dataset.v===id));
+  renderCurrentView();
+};
+
+const renderCurrentView=()=>{
+  if(curView==='vDash')    renderDash();
+  if(curView==='vClients') renderClients();
+  if(curView==='vDetail')  renderDetail();
+  if(curView==='vHistory') renderHistory();
+};
+
+document.getElementById('btnBack').onclick=()=>navigate('vClients');
+document.querySelectorAll('.bn').forEach(b=>b.onclick=()=>navigate(b.dataset.v));
+
+// Reset client detail filters when switching clients
+const openDetail=(id)=>{
+  if(curClient !== id){
+    dfDetailFrom=''; dfDetailTo=''; dfDetailOpen=false;
+  }
+  curClient=id;
+  navigate('vDetail');
+};
+
+/* ================================================================
+   PRINT
+================================================================ */
+const doPrint=title=>{
+  document.getElementById('printDocTitle').textContent=title;
+  document.getElementById('printDocDate').textContent='Imprimé le '+fmtD(today());
+  window.print();
+};
+document.getElementById('btnPrintTop').onclick=()=>{
+  if(curView==='vDetail'&&curClient){ const c=getC(curClient); doPrint(`Fiche client : ${c?c.nom:''}`); }
+  else if(curView==='vHistory') doPrint('Historique des paiements');
+  else if(curView==='vDash')    doPrint('Tableau de bord');
+  else if(curView==='vClients') doPrint('Liste des clients');
+};
+document.getElementById('btnPrintClient').onclick=()=>{
+  const c=getC(curClient); if(c) doPrint(`Fiche client : ${c.nom}`);
+};
+document.getElementById('btnPrintAll').onclick=()=>{
+  closeM('mSettings'); navigate('vClients'); setTimeout(()=>doPrint('Liste complète des clients'),200);
+};
+document.getElementById('btnPrintHistory').onclick=()=>{
+  closeM('mSettings'); navigate('vHistory'); setTimeout(()=>doPrint('Historique global des paiements'),200);
+};
+
+/* ================================================================
+   RENDER: DASHBOARD
+================================================================ */
+const renderDash=()=>{
+  const s=globalTot();
+  document.getElementById('dStats').innerHTML=`
+    <div class="sc"><div class="sc-icon">👥</div><div class="sc-lbl">Clients total</div><div class="sc-val">${s.nbC}</div></div>
+    <div class="sc"><div class="sc-icon">🔴</div><div class="sc-lbl">Débiteurs</div><div class="sc-val r">${s.nbD}</div></div>
+    <div class="sc"><div class="sc-icon">💳</div><div class="sc-lbl">Total dettes</div><div class="sc-val">${fmt$(s.total)}</div></div>
+    <div class="sc"><div class="sc-icon">✅</div><div class="sc-lbl">Total payé</div><div class="sc-val g">${fmt$(s.paid)}</div></div>
+    <div class="sc full"><div class="sc-icon">⏳</div><div class="sc-lbl">Reste à payer</div>
+      <div class="sc-val ${s.reste>0?'o':''}">${fmt$(s.reste)}</div>
+      <div class="sc-sub">${isOnline?'🔥 Synchronisé Firebase':'📡 Cache local'}</div></div>`;
+
+  // Statuts
+  const dbt=clients.filter(c=>clientTot(c).reste>0);
+  const nbN=dbt.filter(c=>clientStatus(c)==='normal').length;
+  const nbR=dbt.filter(c=>clientStatus(c)==='en_retard').length;
+  const nbC=dbt.filter(c=>clientStatus(c)==='contentieux').length;
+  document.getElementById('dStatusRow').innerHTML=`
+    <div class="src sn" onclick="filterByStatus('normal')">
+      <div class="src-icon">🟢</div><div class="src-val">${nbN}</div><div class="src-lbl">À jour</div>
+    </div>
+    <div class="src sr" onclick="filterByStatus('en_retard')">
+      <div class="src-icon">🟡</div><div class="src-val">${nbR}</div><div class="src-lbl">En retard</div>
+    </div>
+    <div class="src sc" onclick="filterByStatus('contentieux')">
+      <div class="src-icon">🔴</div><div class="src-val">${nbC}</div><div class="src-lbl">Contentieux</div>
+    </div>`;
+
+  const debtors=clients.map(c=>({...c,tot:clientTot(c)}))
+    .filter(c=>c.tot.reste>0).sort((a,b)=>b.tot.reste-a.tot.reste).slice(0,10);
+  document.getElementById('dCount').textContent=debtors.length;
+  document.getElementById('dList').innerHTML=debtors.length===0
+    ?`<div class="empty"><div class="empty-icon">🎉</div><div class="empty-title">Aucune dette en cours</div><div class="empty-sub">Tous vos clients sont à jour !</div></div>`
+    :debtors.map(c=>ccHTML(c,c.tot)).join('');
+  document.querySelectorAll('#dList .cc').forEach(el=>
+    el.onclick=()=>openDetail(el.dataset.id));
+};
+
+/* ================================================================
+   RENDER: CLIENTS
+================================================================ */
+const renderClients=()=>{
+  let list=clients.map(c=>({...c,tot:clientTot(c)}));
+  if(searchQ){ const q=searchQ.toLowerCase();
+    list=list.filter(c=>c.nom.toLowerCase().includes(q)||(c.telephone||'').includes(q)); }
+  if(statusFilter) list=list.filter(c=>clientStatus(c)===statusFilter);
+  if(sortMode==='debt')   list.sort((a,b)=>b.tot.reste-a.tot.reste);
+  else if(sortMode==='paid')   list.sort((a,b)=>b.tot.paid-a.tot.paid);
+  else if(sortMode==='recent') list.sort((a,b)=>(b.tot.last||'').localeCompare(a.tot.last||''));
+  else list.sort((a,b)=>a.nom.localeCompare(b.nom,'fr'));
+  // Contentieux toujours en haut
+  list.sort((a,b)=>{const sa=clientStatus(a),sb=clientStatus(b);
+    if(sa==='contentieux'&&sb!=='contentieux')return -1;
+    if(sb==='contentieux'&&sa!=='contentieux')return 1; return 0;});
+  document.getElementById('cList').innerHTML=list.length===0
+    ?`<div class="empty"><div class="empty-icon">👤</div>
+        <div class="empty-title">${clients.length===0?'Aucun client':statusFilter?'Aucun client dans cette catégorie':'Aucun résultat'}</div>
+        <div class="empty-sub">${clients.length===0?'Appuyez sur + pour commencer':'Modifiez votre recherche'}</div></div>`
+    :list.map(c=>ccHTML(c,c.tot)).join('');
+  document.querySelectorAll('#cList .cc').forEach(el=>
+    el.onclick=()=>{ statusFilter=''; openDetail(el.dataset.id); });
+};
+
+const ccHTML=(c,t)=>{
+  const st=clientStatus(c); const isCnt=st==='contentieux';
+  return `<div class="cc" data-id="${c.id}" style="${isCnt?'border:2px solid #8B0000;overflow:hidden;':''}">
+    ${isCnt?'<div class="content-strip">⚠️ CONTENTIEUX</div>':''}
+    ${t.reste>0&&!isCnt?'<span class="dot"></span>':''}
+    <div class="cc-av" style="${isCnt?'background:#8B0000':''}">${ini(c.nom)}</div>
+    <div class="cc-info">
+      <div class="cc-name">${esc(c.nom)}</div>
+      <div style="margin-top:3px"><span class="spill ${ST_CSS[st]}">${ST_LBL[st]}</span></div>
+      <div class="cc-phone" style="margin-top:3px">${c.telephone||'—'}</div>
+      ${t.last?`<div class="cc-last">Dernier pmt: ${fmtD(t.last)}</div>`:''}
+    </div>
+    <div style="text-align:right;flex-shrink:0">
+      <div class="cc-debt">${fmt$(t.reste)}</div>
+      <div class="cc-paid">${fmt$(t.paid)} payé</div>
+    </div>
+  </div>`;
+};
+
+document.getElementById('searchIn').oninput=e=>{ searchQ=e.target.value; statusFilter=''; renderClients(); };
+document.getElementById('sortChips').onclick=e=>{
+  const ch=e.target.closest('[data-sort]'); if(!ch) return;
+  sortMode=ch.dataset.sort;
+  document.querySelectorAll('.chip').forEach(c=>c.classList.remove('a'));
+  ch.classList.add('a'); renderClients();
+};
+
+/* ================================================================
+   DATE FILTER EVENT LISTENERS
+================================================================ */
+
+// ---- Detail filter toggle ----
+document.getElementById('btnToggleDetailFilter').onclick=()=>{
+  dfDetailOpen = !dfDetailOpen;
+  renderDetail();
+};
+// Detail date inputs
+document.getElementById('dfDetailFrom').onchange=e=>{ dfDetailFrom=e.target.value; renderDetail(); };
+document.getElementById('dfDetailTo').onchange  =e=>{ dfDetailTo=e.target.value;   renderDetail(); };
+// Detail reset
+document.getElementById('dfDetailReset').onclick=()=>{
+  dfDetailFrom=''; dfDetailTo='';
+  document.querySelectorAll('#detailFilterBar .df-chip').forEach(c=>c.classList.remove('a'));
+  renderDetail();
+};
+
+// ---- History filter toggle ----
+document.getElementById('btnToggleHistFilter').onclick=()=>{
+  dfHistOpen = !dfHistOpen;
+  renderHistory();
+};
+// History date inputs
+document.getElementById('dfHistFrom').onchange  =e=>{ dfHistFrom=e.target.value;   renderHistory(); };
+document.getElementById('dfHistTo').onchange    =e=>{ dfHistTo=e.target.value;     renderHistory(); };
+document.getElementById('dfHistClient').oninput =e=>{ dfHistClient=e.target.value; renderHistory(); };
+// History reset
+document.getElementById('dfHistReset').onclick=()=>{
+  dfHistFrom=''; dfHistTo=''; dfHistClient='';
+  document.querySelectorAll('#histFilterBar .df-chip').forEach(c=>c.classList.remove('a'));
+  renderHistory();
+};
+
+// ---- Preset chips (shared handler for both bars) ----
+document.addEventListener('click', e=>{
+  const chip = e.target.closest('[data-preset]');
+  if(!chip) return;
+  const preset = chip.dataset.preset; // 'detail' or 'hist'
+  const p      = chip.dataset.p;
+  const {from,to} = presetRange(p);
+
+  if(preset==='detail'){
+    dfDetailFrom=from; dfDetailTo=to;
+    // visual active state — only chips inside detailFilterBar
+    document.querySelectorAll('#detailFilterBar .df-chip').forEach(c=>c.classList.remove('a'));
+    chip.classList.add('a');
+    renderDetail();
+  } else if(preset==='hist'){
+    dfHistFrom=from; dfHistTo=to;
+    document.querySelectorAll('#histFilterBar .df-chip').forEach(c=>c.classList.remove('a'));
+    chip.classList.add('a');
+    renderHistory();
+  }
+});
+
+/* ================================================================
+   RENDER: DETAIL  (with date filter)
+================================================================ */
+const renderDetail=()=>{
+  const c=getC(curClient); if(!c){ navigate('vClients'); return; }
+  const t=clientTot(c);
+  const st=clientStatus(c);
+  const isCnt=st==='contentieux';
+  const recon=getRecon(c.id);
+
+  // ---- Hero ----
+  document.getElementById('dHero').innerHTML=`
+    ${isCnt?'<div class="content-strip">⚠️ DOSSIER CONTENTIEUX — Action requise</div>':''}
+    <div class="hero" style="${isCnt?'background:linear-gradient(135deg,#8B0000,#E4002B)':''}">
+      <div class="hero-av">${ini(c.nom)}</div>
+      <div style="flex:1;min-width:0">
+        <div class="hero-name">${esc(c.nom)}</div>
+        <div class="hero-phone">${c.telephone||'Pas de numéro'}</div>
+        <div style="margin-top:5px">
+          <span class="spill" style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.3)">${ST_LBL[st]}</span>
+        </div>
+      </div>
+      <div class="hero-acts">
+        <button class="ib btn-no-print" id="bEditC" title="Modifier">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
+        </button>
+        <button class="ib btn-no-print" id="bDelC" title="Supprimer">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+        </button>
+      </div>
+    </div>`;
+  document.getElementById('bEditC').onclick=()=>openEditClient(c);
+  document.getElementById('bDelC').onclick=()=>confirm2('Supprimer client',
+    `Supprimer ${c.nom} et toutes ses données Firebase ?`,'Supprimer',async()=>{
+      await fbDeleteClient(c.id);
+      toast('Client supprimé de Firebase 🔥'); navigate('vClients');
+    });
+
+  // ---- Global stats ----
+  document.getElementById('dStat').innerHTML=`
+    <div class="dsc"><div class="dsc-l">Total</div><div class="dsc-v">${fmt$(t.total)}</div></div>
+    <div class="dsc"><div class="dsc-l">Payé</div><div class="dsc-v" style="color:var(--green)">${fmt$(t.paid)}</div></div>
+    <div class="dsc"><div class="dsc-l">Reste</div><div class="dsc-v" style="color:${t.reste>0?'var(--red)':'var(--green)'}">${fmt$(t.reste)}</div></div>`;
+
+  // ---- Filter bar ----
+  const filterBar = document.getElementById('detailFilterBar');
+  const filterBtn = document.getElementById('btnToggleDetailFilter');
+  filterBar.style.display = dfDetailOpen ? 'flex' : 'none';
+  filterBtn.classList.toggle('active', dfDetailOpen || dfDetailFrom || dfDetailTo);
+  document.getElementById('dfDetailFrom').value = dfDetailFrom;
+  document.getElementById('dfDetailTo').value   = dfDetailTo;
+
+  const hasFilter = dfDetailFrom || dfDetailTo;
+  let visibleDebts = c.dettes;
+  if(hasFilter){
+    visibleDebts = c.dettes.map(d=>{
+      const debtInRange = inRange(d.date, dfDetailFrom, dfDetailTo);
+      const filteredPays = d.paiements.filter(p=>inRange(p.date, dfDetailFrom, dfDetailTo));
+      if(!debtInRange && filteredPays.length===0) return null;
+      return { ...d, paiements: filteredPays, _debtInRange: debtInRange };
+    }).filter(Boolean);
+  }
+
+  const summaryEl = document.getElementById('detailFilterSummary');
+  if(hasFilter){
+    let fTotal=0, fPaid=0, fPayCount=0;
+    visibleDebts.forEach(d=>{
+      if(d._debtInRange) fTotal += d.montant_total;
+      d.paiements.forEach(p=>{ fPaid+=p.montant; fPayCount++; });
+    });
+    const fReste = Math.max(0, fTotal - fPaid);
+    summaryEl.style.display = 'block';
+    summaryEl.innerHTML = `
+      <div class="df-summary">
+        <div class="df-summary-item"><span class="df-summary-lbl">Dettes sur période</span><span class="df-summary-val r">${fmt$(fTotal)}</span></div>
+        <div class="df-summary-item"><span class="df-summary-lbl">Payé (${fPayCount} pmt)</span><span class="df-summary-val g">${fmt$(fPaid)}</span></div>
+        <div class="df-summary-item"><span class="df-summary-lbl">Reste filtré</span><span class="df-summary-val ${fReste>0?'o':''}">${fmt$(fReste)}</span></div>
+      </div>
+      <div style="font-size:10px;color:var(--text3);text-align:center;margin-top:5px">
+        Période: ${dfDetailFrom?fmtD(dfDetailFrom):'…'} → ${dfDetailTo?fmtD(dfDetailTo):'…'}</div>`;
+  } else { summaryEl.style.display = 'none'; }
+
+  document.getElementById('detailDebtCount').textContent = hasFilter?`(${visibleDebts.length}/${c.dettes.length})`:'';
+
+  // ---- Render debt cards ----
+  const debtEl=document.getElementById('debtList');
+  if(c.dettes.length===0){
+    debtEl.innerHTML=`<div class="empty"><div class="empty-icon">📋</div><div class="empty-title">Aucune dette</div><div class="empty-sub">Appuyez sur "+ Dette" pour commencer</div></div>`;
+  } else if(hasFilter && visibleDebts.length===0){
+    debtEl.innerHTML=`<div class="empty"><div class="empty-icon">📅</div><div class="empty-title">Aucun résultat</div><div class="empty-sub">Aucune dette ni paiement dans cette période</div></div>`;
+  } else {
+    debtEl.innerHTML=(hasFilter?visibleDebts:c.dettes).map(d=>debtCardHTML(d)).join('');
+    document.querySelectorAll('.btn-pay').forEach(b=>b.onclick=e=>{ e.stopPropagation(); openPayment(b.dataset.d); });
+    document.querySelectorAll('.btn-del-d').forEach(b=>b.onclick=e=>{ e.stopPropagation(); deleteDebt(b.dataset.d); });
+    document.querySelectorAll('.btn-del-p').forEach(b=>b.onclick=e=>{ e.stopPropagation(); deletePay(b.dataset.d,b.dataset.p); });
+  }
+
+  // ---- Section Reconnaissance de dette ----
+  const reconDiv=document.createElement('div');
+  reconDiv.className='recon-section';
+  reconDiv.innerHTML=buildReconSectionHTML(c,recon,st);
+  debtEl.appendChild(reconDiv);
+  document.getElementById('btnOpenRecon')?.addEventListener('click',()=>openReconModal(c));
+  document.getElementById('btnDlRecon')?.addEventListener('click',async()=>{
+    if(!recon) return;
+    if(recon.mode==='tranches'&&recon.tranches){
+      toast('Génération de tous les PDFs…','info');
+      for(const tr of recon.tranches){
+        await generateReconPDF({...recon,montant:tr.montant,date_limite:tr.date_limite,
+          tranche_num:tr.numero,total_tranches:recon.tranches.length,tranche_id:tr.id},c,tr.payee);
+        await delay(300);
+      }
+      toast(`${recon.tranches.length} PDFs téléchargés ✓`);
+    } else {
+      await generateReconPDF(recon,c,false);
+      toast('PDF téléchargé ✓');
+    }
+  });
+};
+
+const debtCardHTML=d=>{
+  const {paid,reste}=debtTot(d);
+  const pct=d.montant_total>0?Math.round((paid/d.montant_total)*100):0;
+  const fc=pct===100?'full':pct>0?'partial':'none';
+  const pill=reste===0?`<span class="pill pill-g">Soldé</span>`
+    :pct>0?`<span class="pill pill-o">${pct}% payé</span>`:`<span class="pill pill-r">Non payé</span>`;
+  const pays=d.paiements.length?`
+    <div class="pays-list">
+      ${d.paiements.map(p=>`
+        <div class="pay-item">
+          <div class="pay-info"><span class="pay-dot"></span><span class="pay-dt">${fmtD(p.date)}</span></div>
+          <div style="display:flex;align-items:center;gap:7px">
+            <span class="pay-amt">+${fmt$(p.montant)}</span>
+            <button class="pay-del btn-del-p btn-no-print" data-d="${d.id}" data-p="${p.id}">✕</button>
+          </div>
+        </div>`).join('')}
+    </div>`:'';
+  return `<div class="dc">
+    <div class="dc-head">
+      <div style="flex:1;min-width:0">
+        <div class="dc-title">${esc(d.description||'Achat')} ${pill}</div>
+        <div class="dc-date">${fmtD(d.date)}</div>
+      </div>
+      <div class="dc-right">
+        <div class="dc-total">${fmt$(d.montant_total)}</div>
+        <div class="dc-reste">Reste: ${fmt$(reste)}</div>
+      </div>
+    </div>
+    <div class="prog-wrap">
+      <div class="prog-bar"><div class="prog-fill ${fc}" style="width:${pct}%"></div></div>
+      <span class="prog-pct">${pct}% remboursé</span>
+    </div>
+    ${pays}
+    <div class="dc-acts btn-no-print">
+      <button class="dc-btn btn-pay" data-d="${d.id}" ${reste<=0?'disabled':''}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Payer
+      </button>
+      <button class="dc-btn btn-del-d" data-d="${d.id}">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+        Supprimer
+      </button>
+    </div>
+  </div>`;
+};
+
+/* ================================================================
+   RENDER: HISTORY  (with date + client filter)
+================================================================ */
+const renderHistory=()=>{
+  let pays = allPays();
+
+  // ---- Filter bar toggle ----
+  const filterBar = document.getElementById('histFilterBar');
+  const filterBtn = document.getElementById('btnToggleHistFilter');
+  const hasFilter = dfHistFrom || dfHistTo || dfHistClient;
+  filterBar.style.display = dfHistOpen ? 'flex' : 'none';
+  filterBtn.classList.toggle('active', dfHistOpen || hasFilter);
+  // Sync inputs
+  document.getElementById('dfHistFrom').value   = dfHistFrom;
+  document.getElementById('dfHistTo').value     = dfHistTo;
+  document.getElementById('dfHistClient').value = dfHistClient;
+
+  // ---- Apply filters ----
+  if(dfHistFrom || dfHistTo){
+    pays = pays.filter(p => inRange(p.date, dfHistFrom, dfHistTo));
+  }
+  if(dfHistClient){
+    const q = dfHistClient.toLowerCase();
+    pays = pays.filter(p => p.clientName.toLowerCase().includes(q));
+  }
+
+  // ---- Total bar ----
+  const totalBar = document.getElementById('histTotalBar');
+  const totalVal = document.getElementById('histTotalVal');
+  if(hasFilter && pays.length>0){
+    const tot = pays.reduce((s,p)=>s+p.montant,0);
+    totalBar.style.display = 'flex';
+    totalVal.textContent   = fmt$(tot);
+  } else {
+    totalBar.style.display = 'none';
+  }
+
+  // ---- Count & list ----
+  document.getElementById('hCount').textContent = pays.length;
+
+  // Group by date for better readability
+  const grouped = {};
+  pays.forEach(p=>{
+    if(!grouped[p.date]) grouped[p.date]=[];
+    grouped[p.date].push(p);
+  });
+
+  if(pays.length===0){
+    document.getElementById('hList').innerHTML =
+      hasFilter
+        ? `<div class="empty"><div class="empty-icon">📅</div><div class="empty-title">Aucun résultat</div><div class="empty-sub">Aucun paiement dans cette période / pour ce client</div></div>`
+        : `<div class="empty"><div class="empty-icon">📊</div><div class="empty-title">Aucun paiement</div><div class="empty-sub">Les paiements apparaîtront ici</div></div>`;
+    return;
+  }
+
+  const sorted = Object.keys(grouped).sort((a,b)=>b.localeCompare(a));
+  document.getElementById('hList').innerHTML = sorted.map(date=>{
+    const dayPays  = grouped[date];
+    const dayTotal = dayPays.reduce((s,p)=>s+p.montant,0);
+    return `
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;align-items:center;justify-content:space-between;
+          padding:4px 2px">
+          <span style="font-size:11px;font-weight:700;color:var(--text3)">${fmtD(date)}</span>
+          <span style="font-size:11px;font-weight:700;color:var(--green)">${fmt$(dayTotal)}</span>
+        </div>
+        ${dayPays.map(p=>`
+          <div class="hi">
+            <div style="flex:1;min-width:0">
+              <div class="hi-client">${esc(p.clientName)}</div>
+              <div class="hi-date" style="display:flex;align-items:center;gap:5px">
+                <span>${fmtD(p.date)}</span>
+              </div>
+            </div>
+            <div class="hi-amt">${fmt$(p.montant)}</div>
+          </div>`).join('')}
+      </div>`;
+  }).join('');
+};
+
+/* ================================================================
+   RECONNAISSANCE DE DETTE
+================================================================ */
+function buildReconSectionHTML(c, recon, st){
+  const hasR=recon&&recon.signature_b64;
+  const log=getClientLog(c.id);
+  const t=clientTot(c);
+
+  const warnMeta=[
+    {n:1,cls:'wb-1',icon:'⚠️', label:'1er Avertissement', desc:'Rappel courtois — invitation à régulariser'},
+    {n:2,cls:'wb-2',icon:'⚠️⚠️',label:'2ème Avertissement',desc:'Mise en demeure — délai impératif'},
+    {n:3,cls:'wb-3',icon:'🚨', label:'Dernier Avertissement',desc:'Avant passage en contentieux'},
+  ];
+
+  const warnSteps=warnMeta.map(m=>{
+    const isSent=log[m.n-1];
+    return `<div class="warn-step${isSent?' sent':''}">
+      <div class="warn-badge ${isSent?'wb-done':m.cls}">${isSent?'✓':m.n}</div>
+      <div class="warn-info">
+        <div class="warn-label">${m.icon} ${m.label}</div>
+        <div class="warn-date">${m.desc}${isSent?' — <span style="color:var(--green);font-weight:600">Envoyé ✓</span>':''}</div>
+      </div>
+      <div class="warn-actions">
+        ${isSent
+          ?`<button class="warn-btn warn-btn-copy" onclick="resendWarn(${m.n},'${c.id}','copy')" title="Renvoyer">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              Renvoyer
+            </button>`
+          :`<button class="warn-btn warn-btn-wa"   onclick="sendWarn(${m.n},'${c.id}','wa')">
+              <svg width="12" height="12" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+              WhatsApp
+            </button>
+            <button class="warn-btn warn-btn-sms"  onclick="sendWarn(${m.n},'${c.id}','sms')">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              SMS
+            </button>
+            <button class="warn-btn warn-btn-copy" onclick="sendWarn(${m.n},'${c.id}','copy')">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              Copier
+            </button>`
+        }
+      </div>
+    </div>`;
+  }).join('');
+
+  const allSent=log.every(Boolean);
+  const sentCount=log.filter(Boolean).length;
+
+  return `
+    <hr style="border:none;border-top:1px solid var(--border);margin:6px 0"/>
+
+    <!-- Avertissements -->
+    <div class="warn-panel">
+      <div class="warn-panel-head">
+        <div>
+          <div class="warn-panel-title">📣 Avertissements de paiement</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${sentCount}/3 envoyé${sentCount>1?'s':''} · ${sentCount===0?'Aucun avertissement envoyé':sentCount<3?'En cours':'Tous envoyés — passage contentieux'}</div>
+        </div>
+        ${sentCount>0?`<button class="warn-reset" onclick="resetWarnings('${c.id}')">Réinitialiser</button>`:''}
+      </div>
+      <div class="warn-steps">${warnSteps}</div>
+      ${allSent?`<div style="background:rgba(139,0,0,.06);border-top:1px solid rgba(139,0,0,.2);
+        padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <div style="font-size:12px;font-weight:600;color:#8B0000">
+          🔴 3 avertissements envoyés — Client en CONTENTIEUX
+        </div>
+        <button class="warn-btn" style="background:#8B0000;color:#fff;white-space:nowrap"
+          onclick="sendContentieuxDirect('${c.id}')">
+          ⚠️ Msg Contentieux
+        </button>
+      </div>`:''}
+    </div>
+
+    <!-- Reconnaissance de dette -->
+    <div class="recon-sec-title" style="display:flex;align-items:center;justify-content:space-between">
+      <span>📄 Reconnaissance de dette</span>
+      <button class="btn btn-p btn-sm" id="btnOpenRecon">${hasR?'✏️ Modifier':'📄 Créer'}</button>
+    </div>
+    ${hasR?`
+      <div class="recon-item" style="align-items:flex-start;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:center;gap:10px;width:100%">
+          <span style="font-size:22px">📄</span>
+          <div class="recon-item-info">
+            <div class="recon-item-title">${esc(recon.nom||c.nom)} — ${recon.mode==='tranches'?recon.tranches.length+' tranche(s)':'Paiement unique'}</div>
+            <div class="recon-item-sub">CIN: ${recon.cin||'—'} · Signé: ${fmtD(recon.date_signature)}</div>
+            <div class="recon-item-sub">Montant total: ${fmt$(recon.montant)}</div>
+          </div>
+          <button class="btn btn-g btn-sm" id="btnDlRecon" style="flex-shrink:0">⬇️ PDF${recon.mode==='tranches'?'s':''}</button>
+        </div>
+        ${recon.mode==='tranches'&&recon.tranches?`
+        <div style="width:100%;display:flex;flex-direction:column;gap:7px">
+          ${recon.tranches.map(tr=>{
+            const isPaid=tr.payee;
+            const isOvrd=!isPaid&&tr.date_limite<today();
+            const cls=isPaid?'tn-paid':isOvrd?'tn-overdue':'tn-pending';
+            return `<div class="tranche-card">
+              <div class="tranche-card-head">
+                <div class="tranche-num ${cls}">${tr.numero}</div>
+                <div class="tranche-info">
+                  <div class="tranche-amount" style="color:${isPaid?'var(--green)':isOvrd?'var(--red)':'var(--text)'}">${fmt$(tr.montant)}</div>
+                  <div class="tranche-date">
+                    ${isPaid?'✅ Payée':'Échéance: '+fmtD(tr.date_limite)}
+                    ${isOvrd&&!isPaid?'<span style="color:var(--red);font-weight:600"> — EN RETARD</span>':''}
+                  </div>
+                </div>
+                <div class="tranche-actions">
+                  ${!isPaid?`<button class="warn-btn warn-btn-wa" style="background:var(--green);font-size:10px"
+                    onclick="markTranchePaid('${c.id}','${tr.id}')">✅ Marquer payée</button>`:''}
+                  <button class="warn-btn warn-btn-copy" style="font-size:10px"
+                    onclick="downloadTranchePDF('${c.id}','${tr.id}')">⬇️ PDF</button>
+                </div>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>`:''}
+      </div>`:`
+      <div class="recon-item">
+        <span style="font-size:22px">📝</span>
+        <div class="recon-item-info">
+          <div class="recon-item-title">Aucune reconnaissance de dette</div>
+          <div class="recon-item-sub">Cliquez "📄 Créer" pour générer un contrat officiel signé</div>
+        </div>
+      </div>`}`;
+}
+
+// Mark a tranche as paid → syncs debt card payment + Firebase
+window.markTranchePaid = function(cid, trancheId){
+  const c=getC(cid); if(!c||!c.reconData?.tranches) return;
+  const tr=c.reconData.tranches.find(t=>t.id===trancheId); if(!tr) return;
+  confirm2('Marquer comme payée',
+    `Tranche ${tr.numero} — ${fmt$(tr.montant)}\nÉchéance: ${fmtD(tr.date_limite)}\n\nCela va :\n• Marquer la tranche payée\n• Enregistrer le paiement dans la fiche dette\n• Générer le reçu PDF avec cachet PAYÉ`,
+    'Confirmer',async()=>{
+    // 1. Mark tranche paid
+    tr.payee=true;
+    tr.date_paiement=today();
+
+    // 2. Add payment to the first debt with remaining balance
+    const d=c.dettes.find(d=>{const{reste}=debtTot(d);return reste>0;});
+    if(d){
+      d.paiements.push({id:uid(),montant:tr.montant,date:today(),tranche_id:tr.id});
+    }
+
+    // 3. Save everything to Firebase in one call
+    await fbSaveClient(c);
+    toast(`Tranche ${tr.numero} payée ✓ — dette mise à jour`);
+
+    // 4. Generate PAYÉ PDF receipt
+    await generateReconPDF({...c.reconData,montant:tr.montant,date_limite:tr.date_limite,
+      tranche_num:tr.numero,total_tranches:c.reconData.tranches.length,tranche_id:tr.id},c,true);
+    renderDetail();
+  });
+};
+
+// Download individual tranche PDF
+window.downloadTranchePDF = async function(cid, trancheId){
+  const c=getC(cid); if(!c||!c.reconData?.tranches) return;
+  const tr=c.reconData.tranches.find(t=>t.id===trancheId); if(!tr) return;
+  await generateReconPDF({...c.reconData,montant:tr.montant,date_limite:tr.date_limite,
+    tranche_num:tr.numero,total_tranches:c.reconData.tranches.length,tranche_id:tr.id},c,tr.payee);
+};
+
+// Build warning message for a specific day
+function buildWarnMsg(day, nom, montant){
+  const L='━━━━━━━━━━━━━━━━━━━━━━━━━━━━';
+  const hdr=`${L}\n📢 OOREDOO – Agence Belguesmi Nader\n📍 THALA – Kasserine\n${L}`;
+  const ftr=`\n${L}\nOOREDOO – Agence Belguesmi Nader\n📍 THALA\n${L}`;
+  const averts=['1er','2ème','3ème'];
+  if(day===1) return `${hdr}\n\nMadame / Monsieur ${nom},\n\nNous vous contactons suite à un solde impayé enregistré à votre nom:\n\n💳 Montant dû : ${montant}\n\nNous vous prions de bien vouloir régulariser votre situation dans les meilleurs délais.\n\n⚠️ 1ER AVERTISSEMENT\nCette notification constitue un premier rappel officiel.${ftr}`;
+  if(day===2) return `${hdr}\n\nMadame / Monsieur ${nom},\n\nSuite à notre premier rappel resté sans suite, votre solde de:\n\n💳 Montant dû : ${montant}\n\ndemeure impayé à ce jour.\n\n⚠️⚠️ 2ÈME AVERTISSEMENT\nNous vous mettons en demeure de procéder au règlement immédiat. Sans régularisation, nous nous verrons contraints d'engager les démarches légales nécessaires.${ftr}`;
+  if(day===3) return `${hdr}\n\n🚨 DERNIER AVERTISSEMENT AVANT CONTENTIEUX 🚨\n\nMadame / Monsieur ${nom},\n\nMalgré nos deux rappels précédents, votre dette de:\n\n💳 Montant dû : ${montant}\n\nn'est toujours pas réglée.\n\n🚨 3ÈME ET DERNIER AVERTISSEMENT\nSans règlement immédiat, votre dossier sera transmis au service contentieux, entraînant des frais supplémentaires à votre charge.\n\nNous vous accordons un dernier délai pour vous acquitter de vos obligations.${ftr}`;
+}
+
+// Send warning to a client (wa / sms / copy)
+window.sendWarn = function(day, cid, mode){
+  const c=getC(cid); if(!c) return;
+  const t=clientTot(c);
+  const msg=buildWarnMsg(day, c.nom, fmt$(t.reste));
+  const ph=(c.telephone||'').replace(/\s/g,'');
+
+  if(mode==='wa'){
+    const url=ph?`https://wa.me/216${ph}?text=${encodeURIComponent(msg)}`:`https://wa.me/?text=${encodeURIComponent(msg)}`;
+    window.open(url,'_blank');
+    markClientWarn(cid,day);
+    toast(`⚠️ Avertissement ${day} envoyé via WhatsApp`);
+  } else if(mode==='sms'){
+    window.location.href=`sms:${ph?'+216'+ph:''}?body=${encodeURIComponent(msg)}`;
+    markClientWarn(cid,day);
+    toast(`⚠️ Avertissement ${day} envoyé via SMS`);
+  } else if(mode==='copy'){
+    navigator.clipboard.writeText(msg).then(()=>{
+      markClientWarn(cid,day);
+      toast(`📋 Avertissement ${day} copié ✓`);
+    }).catch(()=>{
+      const ta=document.createElement('textarea');ta.value=msg;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);
+      markClientWarn(cid,day);
+      toast(`📋 Avertissement ${day} copié ✓`);
+    });
+  }
+  // Refresh the detail view to update badges
+  setTimeout(()=>renderDetail(), 300);
+};
+
+// Re-send an already-sent warning (no re-marking)
+window.resendWarn = function(day, cid, mode){
+  const c=getC(cid); if(!c) return;
+  const t=clientTot(c);
+  const msg=buildWarnMsg(day, c.nom, fmt$(t.reste));
+  const ph=(c.telephone||'').replace(/\s/g,'');
+  if(mode==='copy'){
+    navigator.clipboard.writeText(msg).then(()=>toast(`📋 Message Jour ${day} copié ✓`)).catch(()=>{
+      const ta=document.createElement('textarea');ta.value=msg;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);
+      toast(`📋 Message Jour ${day} copié ✓`);
+    });
+  } else if(mode==='wa'){
+    const url=ph?`https://wa.me/216${ph}?text=${encodeURIComponent(msg)}`:`https://wa.me/?text=${encodeURIComponent(msg)}`;
+    window.open(url,'_blank');
+    toast(`📱 Message Jour ${day} renvoyé`);
+  }
+};
+
+// Reset all warnings for a client
+window.resetWarnings = function(cid){
+  confirm2('Réinitialiser avertissements',`Remettre à zéro les 3 avertissements pour ce client ?`,'Réinitialiser',()=>{
+    resetClientWarn(cid);
+    toast('Avertissements réinitialisés');
+    renderDetail();
+  });
+};
+
+// Send contentieux message directly from detail
+window.sendContentieuxDirect = function(cid){
+  const c=getC(cid); if(!c) return;
+  openContentieuxMsg(c);
+};
+
+function openReconModal(c){
+  const t=clientTot(c), recon=getRecon(c.id)||{};
+  // Auto-build description from client debts
+  const debtDescs=c.dettes.filter(d=>debtTot(d).reste>0).map(d=>d.description||'Achat').join(', ');
+  // Populate identity fields
+  document.getElementById('rNom').value     = recon.nom        || c.nom;
+  document.getElementById('rCin').value     = recon.cin        || '';
+  document.getElementById('rAddr').value    = recon.adresse    || '';
+  document.getElementById('rDesc').value    = recon.description|| debtDescs;
+  document.getElementById('rMontant').value = t.reste.toFixed(3);
+  document.getElementById('rDateSign').value= recon.date_signature || today();
+  document.getElementById('eRecon').style.display='none';
+  document.getElementById('reconPreviewArea').style.display='none';
+
+  // Restore mode
+  const mode = recon.mode||'unique';
+  document.getElementById('rMode').value=mode;
+  toggleReconMode(mode);
+
+  if(mode==='unique'){
+    document.getElementById('rDateLimite').value=recon.date_limite||'';
+  } else if(mode==='tranches' && recon.tranches){
+    document.getElementById('rNbTranches').value=recon.tranches.length;
+    renderTranchesConfig(t.reste, recon.tranches);
+  } else {
+    document.getElementById('rNbTranches').value='3';
+    renderTranchesConfig(t.reste);
+  }
+
+  openM('mRecon');
+  setTimeout(()=>{
+    initSigCanvas();
+    if(recon.signature_b64){
+      const img=new Image(); img.onload=()=>{
+        const cv=document.getElementById('sigCanvas');
+        cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+        sigHasMark=true;
+        document.getElementById('sigStatus').textContent='Signature enregistrée ✓';
+        document.getElementById('sigStatus').className='sig-ok';
+      }; img.src=recon.signature_b64;
+    }
+  },120);
+}
+
+// Mode toggle
+function toggleReconMode(mode){
+  document.getElementById('rSingleBlock').style.display   = mode==='unique'   ? 'block':'none';
+  document.getElementById('rTranchesBlock').style.display = mode==='tranches' ? 'block':'none';
+  if(mode==='tranches'){
+    const mont=parseFloat(document.getElementById('rMontant').value)||0;
+    renderTranchesConfig(mont);
+  }
+}
+document.getElementById('rMode').onchange=e=>toggleReconMode(e.target.value);
+document.getElementById('rNbTranches').onchange=()=>{
+  const mont=parseFloat(document.getElementById('rMontant').value)||0;
+  renderTranchesConfig(mont);
+};
+
+function renderTranchesConfig(total, existing){
+  const nb=parseInt(document.getElementById('rNbTranches').value)||3;
+  const perTranche=total>0?+(total/nb).toFixed(3):0;
+  const container=document.getElementById('rTranchesConfig');
+  container.innerHTML='';
+  for(let i=1;i<=nb;i++){
+    const ex=existing&&existing[i-1];
+    const div=document.createElement('div');
+    div.className='tranche-row';
+    div.innerHTML=`
+      <div class="tranche-row-head">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="tranche-badge">${i}</div>
+          <span style="font-size:13px;font-weight:600">Tranche ${i}</span>
+        </div>
+      </div>
+      <div class="tranche-inputs">
+        <div>
+          <div style="font-size:10px;font-weight:600;color:var(--text3);margin-bottom:4px">MONTANT (DT)</div>
+          <input class="tranche-input" type="number" id="tr_mont_${i}"
+            value="${ex?ex.montant:perTranche}" step="0.001" min="0.001"
+            oninput="updateTranchesTotal()"/>
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:600;color:var(--text3);margin-bottom:4px">DATE LIMITE</div>
+          <input class="tranche-input" type="date" id="tr_date_${i}"
+            value="${ex?ex.date_limite:''}"/>
+        </div>
+      </div>`;
+    container.appendChild(div);
+  }
+  updateTranchesTotal();
+}
+
+function updateTranchesTotal(){
+  const nb=parseInt(document.getElementById('rNbTranches').value)||3;
+  const total=parseFloat(document.getElementById('rMontant').value)||0;
+  let sum=0;
+  for(let i=1;i<=nb;i++){
+    const v=parseFloat(document.getElementById(`tr_mont_${i}`)?.value)||0;
+    sum+=v;
+  }
+  const diff=(sum-total).toFixed(3);
+  const el=document.getElementById('rTranchesTotal');
+  if(!el) return;
+  const ok=Math.abs(parseFloat(diff))<0.01;
+  el.style.display='block';
+  el.innerHTML=`Total tranches: <b>${fmt$(sum)}</b> / ${fmt$(total)} 
+    ${ok?'<span style="color:var(--green);font-weight:700">✓ Équilibré</span>':'<span style="color:var(--red);font-weight:700">⚠ Différence: '+diff+' DT</span>'}`;
+}
+
+function initSigCanvas(){
+  const cv=document.getElementById('sigCanvas'), ctx=cv.getContext('2d');
+  cv.width=cv.offsetWidth||340; cv.height=130;
+  ctx.clearRect(0,0,cv.width,cv.height);
+  sigDrawing=false; sigHasMark=false;
+  ctx.strokeStyle='#1a1a2e'; ctx.lineWidth=2.2; ctx.lineCap='round'; ctx.lineJoin='round';
+  document.getElementById('sigStatus').textContent='Signez ici (doigt ou souris)';
+  document.getElementById('sigStatus').className='sig-lbl';
+  const pos=e=>{
+    const r=cv.getBoundingClientRect(), cl=e.touches?e.touches[0]:e;
+    return{x:(cl.clientX-r.left)*(cv.width/r.width), y:(cl.clientY-r.top)*(cv.height/r.height)};
+  };
+  cv.onmousedown=e=>{sigDrawing=true;ctx.beginPath();const p=pos(e);ctx.moveTo(p.x,p.y)};
+  cv.onmousemove=e=>{if(!sigDrawing)return;const p=pos(e);ctx.lineTo(p.x,p.y);ctx.stroke();sigHasMark=true};
+  cv.onmouseup=()=>{sigDrawing=false;if(sigHasMark){document.getElementById('sigStatus').textContent='Signature capturée ✓';document.getElementById('sigStatus').className='sig-ok'}};
+  cv.onmouseleave=()=>{sigDrawing=false};
+  cv.ontouchstart=e=>{e.preventDefault();sigDrawing=true;ctx.beginPath();const p=pos(e);ctx.moveTo(p.x,p.y)};
+  cv.ontouchmove=e=>{e.preventDefault();if(!sigDrawing)return;const p=pos(e);ctx.lineTo(p.x,p.y);ctx.stroke();sigHasMark=true};
+  cv.ontouchend=()=>{sigDrawing=false;if(sigHasMark){document.getElementById('sigStatus').textContent='Signature capturée ✓';document.getElementById('sigStatus').className='sig-ok'}};
+}
+
+document.getElementById('btnSigClear').onclick=()=>{
+  const cv=document.getElementById('sigCanvas');cv.getContext('2d').clearRect(0,0,cv.width,cv.height);
+  sigHasMark=false;
+  document.getElementById('sigStatus').textContent='Signez ici (doigt ou souris)';
+  document.getElementById('sigStatus').className='sig-lbl';
+};
+
+function collectReconData(){
+  const nom  = document.getElementById('rNom').value.trim();
+  const cin  = document.getElementById('rCin').value.trim();
+  const addr = document.getElementById('rAddr').value.trim();
+  const desc = document.getElementById('rDesc').value.trim();
+  const mont = parseFloat(document.getElementById('rMontant').value);
+  const ds   = document.getElementById('rDateSign').value||today();
+  const mode = document.getElementById('rMode').value;
+  const eEl  = document.getElementById('eRecon');
+
+  if(!nom||!cin||!mont){
+    eEl.textContent='Remplissez les champs Nom, CIN et assurez-vous d\'avoir une dette'; eEl.style.display='block'; return null;
+  }
+  if(!sigHasMark){
+    eEl.textContent='La signature du débiteur est requise'; eEl.style.display='block'; return null;
+  }
+  eEl.style.display='none';
+
+  const sig=document.getElementById('sigCanvas').toDataURL('image/png');
+
+  if(mode==='unique'){
+    const dl=document.getElementById('rDateLimite').value;
+    if(!dl){eEl.textContent='La date limite est requise';eEl.style.display='block';return null;}
+    return{nom,cin,adresse:addr,description:desc,montant:mont,date_signature:ds,mode:'unique',
+           date_limite:dl,signature_b64:sig};
+  } else {
+    const nb=parseInt(document.getElementById('rNbTranches').value)||3;
+    const tranches=[];
+    let sum=0;
+    for(let i=1;i<=nb;i++){
+      const m=parseFloat(document.getElementById(`tr_mont_${i}`)?.value)||0;
+      const d=document.getElementById(`tr_date_${i}`)?.value||'';
+      if(!d){eEl.textContent=`Date manquante pour la tranche ${i}`;eEl.style.display='block';return null;}
+      if(m<=0){eEl.textContent=`Montant invalide pour la tranche ${i}`;eEl.style.display='block';return null;}
+      tranches.push({id:uid(),numero:i,montant:m,date_limite:d,payee:false});
+      sum+=m;
+    }
+    if(Math.abs(sum-mont)>0.1){eEl.textContent=`Total des tranches (${fmt$(sum)}) ≠ montant dû (${fmt$(mont)})`;eEl.style.display='block';return null;}
+    return{nom,cin,adresse:addr,description:desc,montant:mont,date_signature:ds,mode:'tranches',
+           tranches,signature_b64:sig};
+  }
+}
+
+document.getElementById('btnPreviewRecon').onclick=()=>{
+  const d=collectReconData(); if(!d) return;
+  const c=getC(curClient);
+  if(d.mode==='unique'){
+    document.getElementById('reconPreviewDoc').innerHTML=reconDocHTMLPreview(d,c);
+  } else {
+    document.getElementById('reconPreviewDoc').innerHTML=
+      d.tranches.map(tr=>reconDocHTMLPreview({...d,montant:tr.montant,date_limite:tr.date_limite,
+        tranche_num:tr.numero,total_tranches:d.tranches.length},c)).join('<hr style="margin:16px 0;border-color:#E4002B"/>');
+  }
+  document.getElementById('reconPreviewArea').style.display='block';
+  document.getElementById('reconPreviewArea').scrollIntoView({behavior:'smooth'});
+};
+
+document.getElementById('btnGenPDF').onclick=async()=>{
+  const d=collectReconData(); if(!d) return;
+  const c=getC(curClient);
+  // Save to client object (Firebase auto-syncs)
+  saveRecon(curClient,d);
+  toast('Génération PDF…','info');
+  await delay(100);
+  if(d.mode==='unique'){
+    await generateReconPDF(d,c,false);
+    toast('PDF téléchargé ✓');
+  } else {
+    for(const tr of d.tranches){
+      await generateReconPDF({...d,montant:tr.montant,date_limite:tr.date_limite,
+        tranche_num:tr.numero,total_tranches:d.tranches.length,tranche_id:tr.id},c,tr.payee);
+    }
+    toast(`${d.tranches.length} PDFs téléchargés ✓`);
+  }
+  closeM('mRecon');
+  renderDetail();
+};
+
+async function generateReconPDF(data,c,payee=false){
+  if(typeof window.jspdf==='undefined'){ toast('PDF non disponible','error'); return; }
+  const{jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  const W=210,M=18;
+
+  // Header
+  doc.setFillColor(228,0,43); doc.rect(0,0,W,22,'F');
+  doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(16);
+  doc.text('ooredoo',M,13);
+  doc.setFontSize(7.5); doc.setFont('helvetica','normal');
+  doc.text('Agence Belguesmi Nader — THALA | Tel: 72 XXX XXX',M,19);
+  const ref=`RD-${data.cin}-${(data.date_signature||'').replace(/-/g,'')}${data.tranche_num?'-T'+data.tranche_num:''}`;
+  doc.text(`Réf: ${ref}`,W-M,19,{align:'right'});
+
+  // Title
+  doc.setTextColor(26,26,46); doc.setFont('helvetica','bold'); doc.setFontSize(13);
+  const title=data.tranche_num
+    ?`RECONNAISSANCE DE DETTE — TRANCHE ${data.tranche_num}/${data.total_tranches}`
+    :'RECONNAISSANCE DE DETTE';
+  doc.text(title,W/2,34,{align:'center'});
+  doc.setFontSize(8.5); doc.setFont('helvetica','italic');
+  doc.text('Document contractuel à valeur légale — Conservez cet original',W/2,40,{align:'center'});
+  doc.setLineWidth(0.5); doc.setDrawColor(228,0,43); doc.line(M,43,W-M,43);
+
+  // Body
+  let y=51;
+  const wb=(txt,indent=0)=>{
+    doc.setFont('helvetica','normal'); doc.setFontSize(9.5); doc.setTextColor(40,40,40);
+    const ls=doc.splitTextToSize(txt,W-M*2-indent);
+    doc.text(ls,M+indent,y); y+=ls.length*5+2;
+  };
+
+  // Debt description from client's first debt (passed via data.description)
+  const debtDesc=data.description||'Achats / Services impayés';
+
+  wb('Je soussigné(e) :'); y+=1;
+  const boxH=payee?47:38;
+  doc.setFillColor(248,248,248); doc.rect(M,y-4,W-M*2,boxH,'F');
+  doc.setLineWidth(0.2); doc.setDrawColor(220,220,220); doc.rect(M,y-4,W-M*2,boxH,'S');
+  doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(20,20,20);
+  doc.text(`Nom & Prénom  :  ${data.nom}`,M+4,y+3);
+  doc.text(`N° CIN          :  ${data.cin}`,M+4,y+10);
+  doc.text(`Adresse         :  ${data.adresse||'Non renseignée'}`,M+4,y+17);
+  doc.text(`Objet de dette  :  ${debtDesc}`,M+4,y+24);
+
+  // PAYÉ stamp — top right INSIDE the box, fully contained
+  if(payee){
+    // Stamp box: 36mm wide, 12mm tall, anchored to right edge of content box
+    const stX=W-M-38; const stY=y-2;
+    doc.setFillColor(240,255,245); doc.rect(stX,stY,36,12,'F');
+    doc.setLineWidth(1.5); doc.setDrawColor(0,160,80);
+    doc.rect(stX,stY,36,12,'S');
+    doc.setLineWidth(0.2);
+    // Text centered inside stamp box
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(0,140,60);
+    doc.text('✔  PAYÉ',stX+18,stY+8,{align:'center'});
+    if(data.tranche_num){
+      doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(0,120,50);
+      doc.text(`Tranche ${data.tranche_num}/${data.total_tranches}`,stX+18,stY+18,{align:'center'});
+    }
+  }
+  doc.setFont('helvetica','normal'); y+=boxH+5;
+
+  wb('reconnais par la présente reconnaître devoir la somme de :');
+  doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(228,0,43);
+  doc.text(`${(data.montant||0).toLocaleString('fr-TN',{minimumFractionDigits:3})} DT`,W/2,y+5,{align:'center'});
+  y+=12;
+
+  if(data.tranche_num){
+    doc.setFont('helvetica','italic'); doc.setFontSize(9); doc.setTextColor(80,80,80);
+    doc.text(`(Tranche ${data.tranche_num} sur ${data.total_tranches} — Montant total de la dette : ${(data.montant_total||data.montant||0).toLocaleString('fr-TN',{minimumFractionDigits:3})} DT)`,W/2,y,{align:'center'});
+    y+=7;
+  }
+
+  doc.setFont('helvetica','normal'); doc.setFontSize(9.5); doc.setTextColor(40,40,40);
+  wb('à OOREDOO – Agence Belguesmi Nader, sise à THALA, Gouvernorat de Kasserine, Tunisie,\nau titre d\'achats/services impayés dûment enregistrés dans nos livres.'); y+=2;
+  wb(`Je m'engage formellement et irrévocablement à régler cette somme au plus tard le :`);
+  doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(26,26,46);
+  doc.text(fmtD(data.date_limite),W/2,y+5,{align:'center'}); y+=13;
+
+  // Legal clauses
+  doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(228,0,43);
+  doc.text('CONDITIONS ET CLAUSES CONTRACTUELLES :', M, y); y+=5;
+  doc.setLineWidth(0.3); doc.line(M,y,W-M,y); y+=4;
+
+  const clauses=[
+    'Art. 1 — DÉFAUT DE PAIEMENT : En cas de non-paiement à la date convenue, le présent acte vaut mise en demeure immédiate sans autre formalité.',
+    'Art. 2 — FRAIS JUDICIAIRES : Le soussigné reconnaît et accepte expressément de prendre en charge l\'intégralité des frais d\'avocat, d\'huissier, de justice et de tout suivi judiciaire engagés par OOREDOO – Agence Belguesmi Nader pour recouvrer la présente créance.',
+    'Art. 3 — INTÉRÊTS DE RETARD : Tout retard de paiement entraînera automatiquement l\'application d\'un intérêt de retard légal en vigueur en Tunisie sur le montant dû.',
+    'Art. 4 — COMPÉTENCE JURIDICTIONNELLE : En cas de litige, les parties conviennent que les tribunaux de Kasserine seront seuls compétents.',
+    'Art. 5 — SOLIDARITÉ : Le débiteur s\'engage solidairement au paiement de toute somme due sans pouvoir invoquer aucune exception dilatoire.',
+    'Art. 6 — VALEUR EXÉCUTOIRE : Le présent document, signé de la main du débiteur, constitue une reconnaissance de dette à valeur légale et peut être produit en justice comme titre exécutoire.',
+  ];
+
+  doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(50,50,50);
+  clauses.forEach(cl=>{
+    if(y>250){ doc.addPage(); y=20; }
+    const ls=doc.splitTextToSize(cl,W-M*2);
+    doc.text(ls,M,y); y+=ls.length*4.5+2;
+  });
+
+  y+=3;
+  wb(`Fait à THALA, le ${fmtD(data.date_signature)}, en deux exemplaires originaux.`);
+
+  // ── SIGNATURE ZONE — always on a new page ──
+  doc.addPage();
+  const sy=20;
+
+  // Header bar — clean title only
+  doc.setFillColor(228,0,43); doc.rect(0,0,W,12,'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(255,255,255);
+  doc.text('ZONE DE SIGNATURES',W/2,8,{align:'center'});
+
+  // Reference + date
+  doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(130,130,130);
+  doc.text(`Réf: ${ref}`,M,sy);
+  doc.text(`Date: ${fmtD(data.date_signature)}`,W-M,sy,{align:'right'});
+
+  // ── COLUMN LABELS — each above its own box, no overlap ──
+  const dby=sy+10;
+
+  // Left label: DÉBITEUR (only above left box)
+  doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(20,20,20);
+  doc.text('DÉBITEUR',M,dby);
+  // Instruction text — only under the left label, max width = 85mm
+  doc.setFontSize(7.5); doc.setFont('helvetica','italic'); doc.setTextColor(100,100,100);
+  const instrLines=doc.splitTextToSize('"Lu, approuvé et reconnu exact" + signature',83);
+  doc.text(instrLines,M,dby+5);
+
+  // Right label: AGENCE OOREDOO (only above right box)
+  const agX=W-M-88;
+  doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(20,20,20);
+  doc.text('AGENCE OOREDOO',agX,dby);
+  doc.setFontSize(7.5); doc.setFont('helvetica','italic'); doc.setTextColor(100,100,100);
+  doc.text('Cachet officiel + signature autorisée',agX,dby+5);
+
+  // ── DEBTOR SIGNATURE BOX ──
+  const dbBoxY=dby+12;
+  doc.setFillColor(253,253,253); doc.rect(M,dbBoxY,88,62,'F');
+  doc.setLineWidth(1); doc.setDrawColor(228,0,43); doc.rect(M,dbBoxY,88,62,'S');
+
+  // Nom + CIN in box
+  doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(40,40,40);
+  doc.text(data.nom,M+4,dbBoxY+8);
+  doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(90,90,90);
+  doc.text(`CIN: ${data.cin}`,M+4,dbBoxY+14);
+
+  // Signature image
+  if(data.signature_b64){
+    try{ doc.addImage(data.signature_b64,'PNG',M+4,dbBoxY+18,70,28,'sig','FAST'); }catch{}
+  }
+
+  // Signature underline
+  doc.setLineWidth(0.5); doc.setDrawColor(100,100,100);
+  doc.line(M+4,dbBoxY+52,M+84,dbBoxY+52);
+  doc.setFont('helvetica','italic'); doc.setFontSize(7); doc.setTextColor(160,160,160);
+  doc.text('Signature du débiteur',M+4,dbBoxY+58);
+
+  // ── PAYÉ STAMP — inside debtor box, well-contained ──
+  if(payee){
+    // Semi-transparent green background
+    doc.setGState(new doc.GState({opacity:0.15}));
+    doc.setFillColor(0,180,80); doc.rect(M+1,dbBoxY+1,86,60,'F');
+    doc.setGState(new doc.GState({opacity:1}));
+
+    // Green border stamp
+    doc.setLineWidth(2.5); doc.setDrawColor(0,160,80);
+    doc.rect(M+8,dbBoxY+22,72,16,'S');
+    doc.setLineWidth(1);
+
+    // PAYÉ text centered inside stamp
+    doc.setFont('helvetica','bold'); doc.setFontSize(18); doc.setTextColor(0,150,70);
+    doc.text('✔  PAYÉ',M+44,dbBoxY+33,{align:'center'});
+
+    // Tranche info below stamp
+    if(data.tranche_num){
+      doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(0,130,60);
+      doc.text(`Tranche ${data.tranche_num} / ${data.total_tranches}`,M+44,dbBoxY+44,{align:'center'});
+    }
+  }
+
+  // ── AGENCY STAMP BOX ──
+  doc.setFillColor(253,253,253); doc.rect(agX,dbBoxY,88,62,'F');
+  doc.setLineWidth(1); doc.setDrawColor(228,0,43); doc.rect(agX,dbBoxY,88,62,'S');
+
+  // Inner dashed stamp area
+  doc.setLineDash([2,2]); doc.setDrawColor(210,210,210);
+  doc.rect(agX+8,dbBoxY+8,72,36,'S'); doc.setLineDash([]);
+
+  // Agency name inside stamp
+  doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(190,190,190);
+  doc.text('OOREDOO',agX+44,dbBoxY+20,{align:'center'});
+  doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(200,200,200);
+  doc.text('Agence Belguesmi Nader',agX+44,dbBoxY+27,{align:'center'});
+  doc.setFontSize(9); doc.text('THALA',agX+44,dbBoxY+34,{align:'center'});
+
+  // Agency signature underline
+  doc.setLineWidth(0.5); doc.setDrawColor(100,100,100);
+  doc.line(agX+4,dbBoxY+52,agX+84,dbBoxY+52);
+  doc.setFont('helvetica','italic'); doc.setFontSize(7); doc.setTextColor(160,160,160);
+  doc.text('Cachet & Signature autorisée',agX+4,dbBoxY+58);
+
+  // ── LEGAL CLAUSE BOX ──
+  const lnY=dbBoxY+70;
+  doc.setFillColor(255,248,240); doc.rect(M,lnY,W-M*2,22,'F');
+  doc.setLineWidth(0.3); doc.setDrawColor(228,0,43); doc.rect(M,lnY,W-M*2,22,'S');
+  doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setTextColor(180,60,0);
+  doc.text('⚠ CLAUSE DE RESPONSABILITÉ :',M+4,lnY+6);
+  doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(100,50,0);
+  const legalNote=doc.splitTextToSize(
+    'En cas de non-paiement à la date convenue, le soussigné accepte de prendre en charge l\'intégralité des frais d\'avocat, d\'huissier et de justice engagés par OOREDOO. Ce document constitue un titre exécutoire à valeur légale.',
+    W-M*2-8
+  );
+  doc.text(legalNote,M+4,lnY+12);
+
+  // ── PAGE FOOTER ──
+  doc.setFillColor(26,26,46); doc.rect(0,281,W,16,'F');
+  doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(255,255,255);
+  doc.text(`OOREDOO – Agence Belguesmi Nader – THALA`,M,289);
+  doc.text(`Réf: ${ref} | ${fmtD(today())}`,W-M,289,{align:'right'});
+
+  const fn=`recon_${data.cin}${data.tranche_num?'_T'+data.tranche_num:''}_${data.date_signature||today()}.pdf`;
+  doc.save(fn);
+}
+
+// Inline HTML preview
+function reconDocHTMLPreview(d,c){
+  const isT=!!d.tranche_num;
+  return `<div class="pdf-hdr">
+    <div class="pdf-logo-txt">ooredoo</div>
+    <div class="pdf-agency">Agence Belguesmi Nader — THALA</div>
+  </div>
+  <div class="pdf-doc-title">${isT?`Reconnaissance de Dette — Tranche ${d.tranche_num}/${d.total_tranches}`:'Reconnaissance de Dette'}</div>
+  <div class="pdf-body">Je soussigné(e) <b>${esc(d.nom)}</b>, CIN N° <b>${esc(d.cin)}</b>, adresse : <b>${esc(d.adresse||'—')}</b>, reconnais devoir :
+<div style="text-align:center;font-size:17px;font-weight:800;color:#E4002B;margin:8px 0">${fmt$(d.montant)}</div>
+${isT?`<div style="text-align:center;font-size:11px;color:#888">(Tranche ${d.tranche_num}/${d.total_tranches})</div>`:''}
+à OOREDOO – Agence Belguesmi Nader, THALA. Date limite : <b>${fmtD(d.date_limite)}</b>. Fait à THALA, le <b>${fmtD(d.date_signature)}</b>.<br><br>
+<b style="color:#E4002B;font-size:10px">CLAUSES :</b> <span style="font-size:10px">Frais juridiques à la charge du débiteur en cas de défaut · Intérêts de retard · Tribunal de Kasserine compétent · Valeur exécutoire.</span></div>
+  <div class="pdf-sig-row">
+    <div class="pdf-sig-block">
+      <div class="pdf-sig-lbl">Signature débiteur</div>
+      <div class="pdf-sig-area"><img src="${d.signature_b64}" style="max-height:44px;max-width:100%;object-fit:contain" alt="sig"/></div>
+      <div class="pdf-sig-name">${esc(d.nom)}</div>
+    </div>
+    <div class="pdf-sig-block">
+      <div class="pdf-sig-lbl">Cachet agence</div>
+      <div class="pdf-sig-area" style="border:1px dashed #ccc;justify-content:center;font-size:9px;color:#bbb">OOREDOO Belguesmi Nader</div>
+      <div class="pdf-sig-name">THALA</div>
+    </div>
+  </div>`;
+}
+
+
+
+/* ================================================================
+   CONTENTIEUX MESSAGE
+================================================================ */
+function buildContentieuxMsg(nom,montant){
+  const L='━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━';
+  return `${L}
+⚠️ MISE EN DEMEURE OFFICIELLE ⚠️
+OOREDOO – Agence Belguesmi Nader
+📍 THALA – Gouvernorat de Kasserine
+${L}
+
+Madame / Monsieur ${nom},
+
+Suite à trois (3) avertissements officiels demeurés sans réponse, votre dossier a été transféré au service CONTENTIEUX.
+
+💳 Montant total impayé : ${montant}
+
+Vous disposez de 48 heures pour régler l'intégralité de votre dette. Sans règlement, votre dossier sera transmis aux autorités pour recouvrement judiciaire avec frais à votre charge.
+
+📌 SEUL UN PAIEMENT INTÉGRAL met fin à cette procédure.
+
+${L}
+OOREDOO – Agence Belguesmi Nader – THALA
+${L}`;
+}
+function openContentieuxMsg(c){
+  cntClientId=c.id;
+  document.getElementById('cntMsgBody').textContent=buildContentieuxMsg(c.nom,fmt$(clientTot(c).reste));
+  openM('mContentieux');
+}
+document.getElementById('btnCntWA').onclick=()=>{
+  const c=getC(cntClientId);if(!c)return;
+  const ph=(c.telephone||'').replace(/\s/g,'');
+  const msg=buildContentieuxMsg(c.nom,fmt$(clientTot(c).reste));
+  window.open(`https://wa.me/${ph?'216'+ph:''}?text=${encodeURIComponent(msg)}`,'_blank');
+  closeM('mContentieux');toast('Message envoyé via WhatsApp');
+};
+document.getElementById('btnCntCopy').onclick=()=>{
+  const c=getC(cntClientId);if(!c)return;
+  const msg=buildContentieuxMsg(c.nom,fmt$(clientTot(c).reste));
+  navigator.clipboard.writeText(msg).then(()=>toast('Message copié ✓')).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=msg;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);toast('Message copié ✓');
+  });
+};
+
+/* ================================================================
+   CRUD — All writes go to Firestore
+================================================================ */
+
+// ----- ADD / EDIT CLIENT -----
+document.getElementById('btnAddClient').onclick=()=>{
+  curClient=null;
+  document.getElementById('mClientTitle').textContent='Nouveau client';
+  document.getElementById('cNom').value='';
+  document.getElementById('cTel').value='';
+  document.getElementById('eNom').classList.remove('show');
+  openM('mClient'); setTimeout(()=>document.getElementById('cNom').focus(),300);
+};
+const openEditClient=c=>{
+  document.getElementById('mClientTitle').textContent='Modifier client';
+  document.getElementById('cNom').value=c.nom;
+  document.getElementById('cTel').value=c.telephone||'';
+  document.getElementById('eNom').classList.remove('show');
+  openM('mClient');
+};
+document.getElementById('btnSaveClient').onclick=async()=>{
+  const nom=document.getElementById('cNom').value.trim();
+  const tel=document.getElementById('cTel').value.trim();
+  if(!nom){ document.getElementById('eNom').classList.add('show'); return; }
+  document.getElementById('eNom').classList.remove('show');
+
+  if(curClient){
+    // Edit: update in local array then push to Firestore
+    const c=getC(curClient); c.nom=nom; c.telephone=tel;
+    await fbSaveClient(c);
+    toast('Client modifié ✓');
+  } else {
+    // New client
+    const newClient={id:uid(),nom,telephone:tel,dettes:[]};
+    await fbSaveClient(newClient);
+    // onSnapshot will add to local array automatically
+    toast('Client ajouté ✓ 🔥');
+  }
+  closeM('mClient');
+};
+
+// ----- ADD DEBT -----
+document.getElementById('btnAddDebt').onclick=()=>{
+  document.getElementById('dMontant').value='';
+  document.getElementById('dDesc').value='';
+  document.getElementById('dDate').value=today();
+  document.getElementById('eDebt').classList.remove('show');
+  openM('mDebt'); setTimeout(()=>document.getElementById('dMontant').focus(),300);
+};
+document.getElementById('btnSaveDebt').onclick=async()=>{
+  const m=parseFloat(document.getElementById('dMontant').value);
+  const desc=document.getElementById('dDesc').value.trim();
+  const date=document.getElementById('dDate').value||today();
+  if(!m||m<=0){ document.getElementById('eDebt').classList.add('show'); return; }
+  document.getElementById('eDebt').classList.remove('show');
+
+  const c=getC(curClient);
+  c.dettes.push({id:uid(),montant_total:m,description:desc||'Achat',date,paiements:[]});
+  await fbSaveClient(c);
+  closeM('mDebt'); toast('Dette ajoutée ✓ 🔥');
+};
+
+// ----- ADD PAYMENT (synced with tranches) -----
+const openPayment=debtId=>{
+  const c=getC(curClient); const d=getD(c,debtId); if(!d) return;
+  const {reste}=debtTot(d); curDebtId=debtId;
+
+  document.getElementById('pInfo').innerHTML=
+    `Dette: <b>${esc(d.description||'Achat')}</b> — Reste dû: <b style="color:var(--red)">${fmt$(reste)}</b>`;
+  document.getElementById('pHint').textContent=`Maximum: ${fmt$(reste)}`;
+  document.getElementById('pMontant').value='';
+  document.getElementById('pMontant').max=reste;
+  document.getElementById('pDate').value=today();
+  document.getElementById('ePay').classList.remove('show');
+
+  // Populate tranche selector if reconData exists with unpaid tranches
+  const recon=c.reconData;
+  const sel=document.getElementById('pTrancheSelect');
+  const trBlock=document.getElementById('pTrancheBlock');
+  sel.innerHTML='<option value="">— Paiement libre (sans tranche) —</option>';
+
+  if(recon?.mode==='tranches'&&recon.tranches){
+    const unpaid=recon.tranches.filter(t=>!t.payee);
+    if(unpaid.length>0){
+      unpaid.forEach(t=>{
+        const isLate=t.date_limite<today();
+        const opt=document.createElement('option');
+        opt.value=t.id;
+        opt.textContent=`Tranche ${t.numero} — ${fmt$(t.montant)} — Échéance: ${fmtD(t.date_limite)}${isLate?' ⚠️ EN RETARD':''}`;
+        opt.dataset.montant=t.montant;
+        sel.appendChild(opt);
+      });
+      trBlock.style.display='block';
+    } else {
+      trBlock.style.display='none';
+    }
+  } else {
+    trBlock.style.display='none';
+  }
+
+  // When tranche selected → prefill amount
+  sel.onchange=()=>{
+    const opt=sel.options[sel.selectedIndex];
+    if(opt.dataset.montant){
+      document.getElementById('pMontant').value=parseFloat(opt.dataset.montant).toFixed(3);
+    }
+  };
+
+  openM('mPay');
+  setTimeout(()=>document.getElementById('pMontant').focus(),300);
+};
+
+document.getElementById('btnSavePay').onclick=async()=>{
+  const m=parseFloat(document.getElementById('pMontant').value);
+  const date=document.getElementById('pDate').value||today();
+  const c=getC(curClient); const d=getD(c,curDebtId); if(!d) return;
+  const {reste}=debtTot(d);
+  if(!m||m<=0||m>reste+0.0005){ document.getElementById('ePay').classList.add('show'); return; }
+  document.getElementById('ePay').classList.remove('show');
+
+  // Add payment to debt card
+  const payId=uid();
+  d.paiements.push({id:payId,montant:m,date});
+
+  // If a tranche was selected → mark it as paid in reconData
+  const sel=document.getElementById('pTrancheSelect');
+  const selectedTrancheId=sel?.value||'';
+  if(selectedTrancheId && c.reconData?.tranches){
+    const tr=c.reconData.tranches.find(t=>t.id===selectedTrancheId);
+    if(tr){ tr.payee=true; tr.date_paiement=date; }
+  }
+
+  await fbSaveClient(c);
+  closeM('mPay');
+  toast('Paiement enregistré ✓ 🔥');
+
+  // Auto-generate PDF receipt if tranche was marked paid
+  if(selectedTrancheId && c.reconData?.tranches){
+    const tr=c.reconData.tranches.find(t=>t.id===selectedTrancheId);
+    if(tr){
+      await delay(200);
+      await generateReconPDF({...c.reconData,montant:tr.montant,date_limite:tr.date_limite,
+        tranche_num:tr.numero,total_tranches:c.reconData.tranches.length,tranche_id:tr.id},c,true);
+    }
+  }
+};
+
+// ----- DELETE DEBT -----
+const deleteDebt=id=>{
+  const c=getC(curClient); const d=getD(c,id); if(!d) return;
+  confirm2('Supprimer dette',`Supprimer "${d.description||'Achat'}" (${fmt$(d.montant_total)}) ?`,'Supprimer',async()=>{
+    c.dettes=c.dettes.filter(x=>x.id!==id);
+    await fbSaveClient(c); toast('Dette supprimée');
+  });
+};
+
+// ----- DELETE PAYMENT -----
+const deletePay=(debtId,payId)=>{
+  const c=getC(curClient); const d=getD(c,debtId); if(!d) return;
+  confirm2('Supprimer paiement','Supprimer ce paiement ?','Supprimer',async()=>{
+    d.paiements=d.paiements.filter(p=>p.id!==payId);
+    await fbSaveClient(c); toast('Paiement supprimé');
+  });
+};
+
+/* ================================================================
+   SETTINGS: EXPORT / IMPORT / RESET
+================================================================ */
+document.getElementById('btnMenu').onclick=()=>openM('mSettings');
+
+// Export to JSON
+document.getElementById('btnExport').onclick=()=>{
+  const b=new Blob([JSON.stringify({clients,exportedAt:new Date().toISOString()},null,2)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(b);
+  a.download=`debt_manager_backup_${today()}.json`; a.click();
+  toast('Backup JSON téléchargé ✓'); closeM('mSettings');
+};
+
+// Import from JSON → push all to Firestore
+document.getElementById('btnImport').onclick=()=>{
+  document.getElementById('importFile').click(); closeM('mSettings');
+};
+document.getElementById('importFile').onchange=e=>{
+  const file=e.target.files[0]; if(!file) return;
+  const r=new FileReader();
+  r.onload=ev=>{
+    try{
+      const data=JSON.parse(ev.target.result);
+      if(!Array.isArray(data.clients)) throw 0;
+      confirm2(
+        'Importer vers Firebase',
+        `Importer ${data.clients.length} clients ? Les données existantes Firebase seront remplacées.`,
+        'Importer',
+        async()=>{
+          setSyncStatus('syncing');
+          toast('Import en cours… ⏳','info');
+          try{
+            // Delete all existing docs first
+            const existing=await db.collection(COLL).get();
+            const batch1=db.batch();
+            existing.docs.forEach(doc=>batch1.delete(doc.ref));
+            await batch1.commit();
+            // Write imported docs in batches of 500
+            const batchSize=500;
+            for(let i=0;i<data.clients.length;i+=batchSize){
+              const batch2=db.batch();
+              data.clients.slice(i,i+batchSize).forEach(c=>{
+                batch2.set(db.collection(COLL).doc(c.id||uid()),c);
+              });
+              await batch2.commit();
+            }
+            toast(`${data.clients.length} clients importés sur Firebase ✓ 🔥`);
+          }catch(err){
+            console.error('Import error:',err);
+            toast('Erreur lors de l\'import Firebase','error');
+          }
+        }
+      );
+    }catch{ toast('Fichier JSON invalide','error'); }
+  };
+  r.readAsText(file); e.target.value='';
+};
+
+// Reset ALL data in Firestore
+document.getElementById('btnReset').onclick=()=>{
+  closeM('mSettings');
+  confirm2(
+    '⚠️ ATTENTION — Suppression Firebase',
+    'TOUTES les données seront supprimées de Firebase (irréversible). Continuer ?',
+    '🗑️ Tout supprimer',
+    async()=>{
+      setSyncStatus('syncing');
+      toast('Suppression en cours…','warn');
+      try{
+        const snapshot=await db.collection(COLL).get();
+        const batch=db.batch();
+        snapshot.docs.forEach(doc=>batch.delete(doc.ref));
+        await batch.commit();
+        toast('Toutes les données supprimées de Firebase','warn');
+        navigate('vDash');
+      }catch(err){
+        console.error('Reset error:',err);
+        toast('Erreur lors de la suppression','error');
+      }
+    }
+  );
+};
+
+/* ================================================================
+   PWA: MANIFEST + SERVICE WORKER
+================================================================ */
+const injectManifest=()=>{
+  // Already injected via inline script in <head> — just register SW
+  // (keeping for backward compatibility)
+};
+const registerSW=()=>{
+  if(!('serviceWorker' in navigator)) return;
+  const code=`
+const V='dm-v4';
+const URLS=['./','./index.html'];
+self.addEventListener('install',e=>{
+  e.waitUntil(caches.open(V).then(c=>{
+    return Promise.allSettled(URLS.map(u=>c.add(u)));
+  }));
+  self.skipWaiting();
+});
+self.addEventListener('activate',e=>{
+  e.waitUntil(caches.keys().then(ks=>
+    Promise.all(ks.filter(k=>k!==V).map(k=>caches.delete(k)))
+  ));
+  self.clients.claim();
+});
+self.addEventListener('fetch',e=>{
+  const url=e.request.url;
+  if(url.includes('googleapis.com')||url.includes('gstatic.com')||
+     url.includes('cloudflare.com')||url.includes('firestore')) return;
+  if(e.request.method!=='GET') return;
+  e.respondWith(
+    caches.match(e.request).then(cached=>{
+      const fresh=fetch(e.request).then(res=>{
+        if(res&&res.status===200&&res.type!=='opaque'){
+          const clone=res.clone();
+          caches.open(V).then(c=>c.put(e.request,clone));
+        }
+        return res;
+      }).catch(()=>cached||new Response('Hors ligne',{status:503}));
+      return cached||fresh;
+    })
+  );
+});`;
+
+  try{
+    // data URI for SW — avoids blob URL scope issues on Android Chrome
+    const b64=btoa(unescape(encodeURIComponent(code)));
+    const swUrl='data:application/javascript;base64,'+b64;
+    navigator.serviceWorker.register(swUrl,{scope:'./'})
+      .then(r=>{
+        console.log('SW ok, scope:',r.scope);
+        r.addEventListener('updatefound',()=>console.log('SW update found'));
+      })
+      .catch(e=>{
+        console.warn('SW data URI failed, trying blob:',e.message);
+        // Fallback to blob URL
+        const blob=new Blob([code],{type:'application/javascript'});
+        const blobUrl=URL.createObjectURL(blob);
+        navigator.serviceWorker.register(blobUrl)
+          .then(()=>console.log('SW blob ok'))
+          .catch(e2=>console.warn('SW blob failed:',e2.message));
+      });
+  }catch(e){console.warn('SW error:',e);}
+};
+
+// ── PWA Install Banner — iOS + Android + Desktop ──
+const _isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent)&&!window.MSStream;
+const _isStandalone=window.navigator.standalone||window.matchMedia('(display-mode:standalone)').matches;
+const _ibClosed=sessionStorage.getItem('ib_closed');
+const _installed=localStorage.getItem('dm_pwa_installed');
+
+// iOS Safari: show manual instruction (no beforeinstallprompt on iOS)
+if(_isIOS && !_isStandalone && !_ibClosed && !_installed){
+  setTimeout(()=>{
+    const ib=document.getElementById('ib');
+    const txt=document.querySelector('.ib-txt');
+    if(ib&&txt){
+      txt.innerHTML='<b>Installer sur iPhone/iPad</b><div style="font-size:10px;color:var(--text3);margin-top:3px">① Appuyez sur <b>⎙</b> (partager) en bas du navigateur<br>② Puis <b>"Ajouter à l\'écran d\'accueil"</b></div>';
+      const btn=document.getElementById('btnInstall');
+      if(btn) btn.style.display='none';
+      ib.classList.add('v');
+    }
+  }, 800);
+}
+
+// Android/Desktop Chrome: wait for native prompt
+window.addEventListener('beforeinstallprompt',e=>{
+  e.preventDefault();
+  installEvt=e;
+  if(!_isStandalone&&!_ibClosed&&!_installed){
+    document.getElementById('ib').classList.add('v');
+  }
+});
+
+window.addEventListener('appinstalled',()=>{
+  installEvt=null;
+  document.getElementById('ib').classList.remove('v');
+  localStorage.setItem('dm_pwa_installed','1');
+  toast('✅ Application installée sur l\'écran d\'accueil !');
+});
+
+document.getElementById('btnInstall').onclick=async()=>{
+  if(!installEvt){
+    toast('Utilisez le menu ⋮ du navigateur → "Ajouter à l\'écran d\'accueil"','info');
+    return;
+  }
+  try{
+    installEvt.prompt();
+    const{outcome}=await installEvt.userChoice;
+    installEvt=null;
+    document.getElementById('ib').classList.remove('v');
+    if(outcome==='accepted') toast('✅ Application installée !');
+    else toast('Installation annulée','warn');
+  }catch(e){ toast('Erreur installation : '+e.message,'error'); }
+};
+
+document.getElementById('btnIbClose').onclick=()=>{
+  document.getElementById('ib').classList.remove('v');
+  sessionStorage.setItem('ib_closed','1');
+};
+
+// Shake animation for login
+const shakeStyle=document.createElement('style');
+shakeStyle.textContent=`@keyframes shake{0%,100%{transform:none}20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}`;
+document.head.appendChild(shakeStyle);
+
+/* ================================================================
+   BOOT — Instantané + Firebase fiable (defer)
+================================================================ */
+(()=>{
+  // 1. Thème immédiat
+  const t=localStorage.getItem(TK)||(window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');
+  document.documentElement.setAttribute('data-theme',t);
+
+  // 2. Cache local immédiat
+  try{ clients=JSON.parse(localStorage.getItem('dm_cache')||'[]'); }catch{ clients=[]; }
+
+  // 2b. Show pending count if any
+  setTimeout(updatePendingBadge, 500);
+
+  // 3. Manifest PWA injecté MAINTENANT (avant login) → active beforeinstallprompt
+  injectManifest();
+  registerSW();
+
+  // 4. Afficher login ou app immédiatement
+  document.getElementById('fbLoading').classList.add('hidden');
+  if(isLogged()){ showApp(); }
+  else { showLoginScreen(); }
+})();
+
+// 5. Firebase s'initialise après que les scripts defer soient chargés
+window.addEventListener('load', ()=>{
+  if(typeof firebase==='undefined'){
+    console.warn('Firebase SDK non disponible — mode hors-ligne');
+    setSyncStatus('offline');
+    return;
+  }
+  _startFirebase();
+});
+
+function _startFirebase(){
+  setSyncStatus('syncing');
+  try{
+    if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    db=firebase.firestore();
+    // Persistence sans bloquer
+    db.enablePersistence({synchronizeTabs:true}).catch(e=>{
+      if(e.code!=='failed-precondition'&&e.code!=='unimplemented')
+        console.warn('Persistence:',e.code);
+    });
+    startRealtimeSync();
+  }catch(e){
+    console.error('Firebase init error:',e);
+    db=null; setSyncStatus('offline');
+  }
+}
+
+// 6. Reconnexion automatique quand l'onglet/app redevient visible
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible' && db && !unsubscribe){
+    startRealtimeSync();
+  }
+});
+
+// 7. Reconnexion sur retour en ligne
+window.addEventListener('online',()=>{
+  isOnline=true;
+  if(db){ startRealtimeSync(); }
+  else { setSyncStatus('online'); }
+  // Flush all pending writes
+  flushPending();
+  toast('🔗 Reconnecté — synchronisation en cours','info');
+});
+window.addEventListener('offline',()=>{
+  isOnline=false; setSyncStatus('offline');
+  updatePendingBadge();
+  toast('📡 Hors-ligne — modifications sauvegardées localement','warn');
+});
+</script>
+</body>
+</html>
