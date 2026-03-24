@@ -2958,38 +2958,50 @@ async function generateReconPDF(data,c,payee=false){
   const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
   const W=210,M=18;
 
-  // Header
-  doc.setFillColor(228,0,43); doc.rect(0,0,W,22,'F');
-  doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(16);
-  doc.text('ooredoo',M,13);
-  doc.setFontSize(7.5); doc.setFont('helvetica','normal');
-  doc.text('Agence Belguesmi Nader — THALA | Tel: 72 XXX XXX',M,19);
-  const ref=`RD-${data.cin}-${(data.date_signature||'').replace(/-/g,'')}${data.tranche_num?'-T'+data.tranche_num:''}`;
-  doc.text(`Réf: ${ref}`,W-M,19,{align:'right'});
+  // ── HEADER — cadre rouge (sans remplissage) pour économiser l'encre ──
+  doc.setLineWidth(1.2); doc.setDrawColor(228,0,43);
+  doc.rect(M-2,5,W-M*2+4,28,'S'); // cadre rouge
 
-  // Title
+  // Logo ooredoo en rouge (texte seulement)
+  doc.setTextColor(228,0,43); doc.setFont('helvetica','bold'); doc.setFontSize(18);
+  doc.text('ooredoo',M+2,15);
+
+  // Infos officielles de l'agence
+  doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(228,0,43);
+  doc.text('Agence OOREDOO Thala 1210 Kasserine',M+2,21);
+  doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(60,60,60);
+  doc.text('Gérant : Belguesmi Nader   |   Tél : +216 21 010 111',M+2,26);
+  doc.text('RC : A13214072021   |   NIF : 978087/G/N/C/000',M+2,31);
+
+  // Référence à droite dans le cadre
+  const ref=`RD-${data.cin}-${(data.date_signature||'').replace(/-/g,'')}${data.tranche_num?'-T'+data.tranche_num:''}`;
+  doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setTextColor(100,100,100);
+  doc.text(`Réf: ${ref}`,W-M,21,{align:'right'});
+  doc.setFont('helvetica','normal');
+  doc.text(`Date: ${fmtD(data.date_signature||today())}`,W-M,27,{align:'right'});
+
+  // ── TITRE du document ──
   doc.setTextColor(26,26,46); doc.setFont('helvetica','bold'); doc.setFontSize(13);
   const title=data.tranche_num
     ?`RECONNAISSANCE DE DETTE — TRANCHE ${data.tranche_num}/${data.total_tranches}`
     :'RECONNAISSANCE DE DETTE';
-  doc.text(title,W/2,34,{align:'center'});
-  doc.setFontSize(8.5); doc.setFont('helvetica','italic');
-  doc.text('Document contractuel à valeur légale — Conservez cet original',W/2,40,{align:'center'});
-  doc.setLineWidth(0.5); doc.setDrawColor(228,0,43); doc.line(M,43,W-M,43);
+  doc.text(title,W/2,42,{align:'center'});
+  doc.setFontSize(8); doc.setFont('helvetica','italic'); doc.setTextColor(100,100,100);
+  doc.text('Document contractuel à valeur légale — Conservez cet original',W/2,48,{align:'center'});
+  doc.setLineWidth(0.5); doc.setDrawColor(228,0,43); doc.line(M,51,W-M,51);
 
   // Body
-  let y=51;
+  let y=59;
   const wb=(txt,indent=0)=>{
     doc.setFont('helvetica','normal'); doc.setFontSize(9.5); doc.setTextColor(40,40,40);
     const ls=doc.splitTextToSize(txt,W-M*2-indent);
     doc.text(ls,M+indent,y); y+=ls.length*5+2;
   };
 
-  // Debt description from client's first debt (passed via data.description)
   const debtDesc=data.description||'Achats / Services impayés';
 
   wb('Je soussigné(e) :'); y+=1;
-  const boxH=payee?47:38;
+  const boxH=payee?52:38;
   doc.setFillColor(248,248,248); doc.rect(M,y-4,W-M*2,boxH,'F');
   doc.setLineWidth(0.2); doc.setDrawColor(220,220,220); doc.rect(M,y-4,W-M*2,boxH,'S');
   doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(20,20,20);
@@ -2998,20 +3010,18 @@ async function generateReconPDF(data,c,payee=false){
   doc.text(`Adresse         :  ${data.adresse||'Non renseignée'}`,M+4,y+17);
   doc.text(`Objet de dette  :  ${debtDesc}`,M+4,y+24);
 
-  // PAYÉ stamp — top right INSIDE the box, fully contained
+  // PAYÉ stamp — top right INSIDE the info box (pas de caractère Unicode spécial)
   if(payee){
-    // Stamp box: 36mm wide, 12mm tall, anchored to right edge of content box
-    const stX=W-M-38; const stY=y-2;
-    doc.setFillColor(240,255,245); doc.rect(stX,stY,36,12,'F');
-    doc.setLineWidth(1.5); doc.setDrawColor(0,160,80);
-    doc.rect(stX,stY,36,12,'S');
+    const stX=W-M-42; const stY=y-2;
+    doc.setFillColor(235,255,242); doc.rect(stX,stY,40,14,'F');
+    doc.setLineWidth(2); doc.setDrawColor(0,160,80);
+    doc.rect(stX,stY,40,14,'S');
     doc.setLineWidth(0.2);
-    // Text centered inside stamp box
-    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(0,140,60);
-    doc.text('✔  PAYÉ',stX+18,stY+8,{align:'center'});
+    doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(0,140,60);
+    doc.text('** PAYE **',stX+20,stY+9,{align:'center'});
     if(data.tranche_num){
-      doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(0,120,50);
-      doc.text(`Tranche ${data.tranche_num}/${data.total_tranches}`,stX+18,stY+18,{align:'center'});
+      doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(0,120,50);
+      doc.text(`Tranche ${data.tranche_num}/${data.total_tranches}`,stX+20,stY+19,{align:'center'});
     }
   }
   doc.setFont('helvetica','normal'); y+=boxH+5;
@@ -3061,18 +3071,21 @@ async function generateReconPDF(data,c,payee=false){
   doc.addPage();
   const sy=20;
 
-  // Header bar — clean title only
-  doc.setFillColor(228,0,43); doc.rect(0,0,W,12,'F');
-  doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(255,255,255);
-  doc.text('ZONE DE SIGNATURES',W/2,8,{align:'center'});
+  // Header — cadre rouge (sans remplissage) pour économiser l'encre
+  doc.setLineWidth(1.2); doc.setDrawColor(228,0,43);
+  doc.rect(M-2,5,W-M*2+4,16,'S');
+  doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(228,0,43);
+  doc.text('ZONE DE SIGNATURES',W/2,10,{align:'center'});
+  doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(80,80,80);
+  doc.text('Agence OOREDOO Thala — Belguesmi Nader — RC: A13214072021',W/2,16,{align:'center'});
 
   // Reference + date
   doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(130,130,130);
-  doc.text(`Réf: ${ref}`,M,sy);
-  doc.text(`Date: ${fmtD(data.date_signature)}`,W-M,sy,{align:'right'});
+  doc.text(`Réf: ${ref}`,M,sy+4);
+  doc.text(`Date: ${fmtD(data.date_signature)}`,W-M,sy+4,{align:'right'});
 
   // ── COLUMN LABELS — each above its own box, no overlap ──
-  const dby=sy+10;
+  const dby=sy+18;
 
   // Left label: DÉBITEUR (only above left box)
   doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(20,20,20);
@@ -3113,21 +3126,21 @@ async function generateReconPDF(data,c,payee=false){
 
   // ── PAYÉ STAMP — inside debtor box, well-contained ──
   if(payee){
-    // Semi-transparent green background
-    doc.setGState(new doc.GState({opacity:0.15}));
+    // Green background fill
+    doc.setGState(new doc.GState({opacity:0.12}));
     doc.setFillColor(0,180,80); doc.rect(M+1,dbBoxY+1,86,60,'F');
     doc.setGState(new doc.GState({opacity:1}));
 
-    // Green border stamp
+    // Green border stamp rectangle
     doc.setLineWidth(2.5); doc.setDrawColor(0,160,80);
     doc.rect(M+8,dbBoxY+22,72,16,'S');
     doc.setLineWidth(1);
 
-    // PAYÉ text centered inside stamp
+    // PAYE text — ASCII only, no Unicode (evite le problème du &)
     doc.setFont('helvetica','bold'); doc.setFontSize(18); doc.setTextColor(0,150,70);
-    doc.text('✔  PAYÉ',M+44,dbBoxY+33,{align:'center'});
+    doc.text('** PAYE **',M+44,dbBoxY+33,{align:'center'});
 
-    // Tranche info below stamp
+    // Tranche info
     if(data.tranche_num){
       doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(0,130,60);
       doc.text(`Tranche ${data.tranche_num} / ${data.total_tranches}`,M+44,dbBoxY+44,{align:'center'});
