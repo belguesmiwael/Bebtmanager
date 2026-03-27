@@ -2664,13 +2664,12 @@ window.downloadTranchePDF = async function(cid, trancheId){
 
 // Build warning message for a specific day
 function buildWarnMsg(day, nom, montant){
-  const L='━━━━━━━━━━━━━━━━━━━━━━━━━━━━';
-  const hdr=`${L}\n📢 OOREDOO – Agence Belguesmi Nader\n📍 THALA – Kasserine\n${L}`;
-  const ftr=`\n${L}\nOOREDOO – Agence Belguesmi Nader\n📍 THALA\n${L}`;
-  const averts=['1er','2ème','3ème'];
-  if(day===1) return `${hdr}\n\nMadame / Monsieur ${nom},\n\nNous vous contactons suite à un solde impayé enregistré à votre nom:\n\n💳 Montant dû : ${montant}\n\nNous vous prions de bien vouloir régulariser votre situation dans les meilleurs délais.\n\n⚠️ 1ER AVERTISSEMENT\nCette notification constitue un premier rappel officiel.${ftr}`;
-  if(day===2) return `${hdr}\n\nMadame / Monsieur ${nom},\n\nSuite à notre premier rappel resté sans suite, votre solde de:\n\n💳 Montant dû : ${montant}\n\ndemeure impayé à ce jour.\n\n⚠️⚠️ 2ÈME AVERTISSEMENT\nNous vous mettons en demeure de procéder au règlement immédiat. Sans régularisation, nous nous verrons contraints d'engager les démarches légales nécessaires.${ftr}`;
-  if(day===3) return `${hdr}\n\n🚨 DERNIER AVERTISSEMENT AVANT CONTENTIEUX 🚨\n\nMadame / Monsieur ${nom},\n\nMalgré nos deux rappels précédents, votre dette de:\n\n💳 Montant dû : ${montant}\n\nn'est toujours pas réglée.\n\n🚨 3ÈME ET DERNIER AVERTISSEMENT\nSans règlement immédiat, votre dossier sera transmis au service contentieux, entraînant des frais supplémentaires à votre charge.\n\nNous vous accordons un dernier délai pour vous acquitter de vos obligations.${ftr}`;
+  const L='━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━';
+  const hdr=`${L}\n📢 OOREDOO – Agence Thala 1210 Kasserine\n👤 Gérant : Belguesmi Nader\n📞 Tél : +216 21 010 111\n🏢 RC : A13214072021  |  NIF : 978087/G/N/C/000\n${L}`;
+  const ftr=`\n${L}\nOOREDOO – Agence Thala 1210 Kasserine\nGérant : Belguesmi Nader\nTél : +216 21 010 111\n${L}`;
+  if(day===1) return `${hdr}\n\nMadame / Monsieur ${nom},\n\nNous vous contactons suite à un solde impayé enregistré à votre nom :\n\n💳 Montant dû : ${montant}\n\nNous vous prions de bien vouloir régulariser votre situation dans les meilleurs délais en vous présentant à notre agence ou en effectuant le règlement par virement.\n\n⚠️ 1ER AVERTISSEMENT OFFICIEL\nCette notification constitue un premier rappel. Sans retour de votre part, nous serons contraints d'engager des procédures supplémentaires.${ftr}`;
+  if(day===2) return `${hdr}\n\nMadame / Monsieur ${nom},\n\nSuite à notre premier rappel resté sans suite, votre solde de :\n\n💳 Montant dû : ${montant}\n\ndemeure impayé à ce jour.\n\n⚠️⚠️ 2ÈME AVERTISSEMENT OFFICIEL\nNous vous mettons en demeure de procéder au règlement immédiat. Sans régularisation sous 48h, nous nous verrons dans l'obligation d'engager les démarches légales nécessaires, avec frais à votre charge.${ftr}`;
+  if(day===3) return `${hdr}\n\n🚨 DERNIER AVERTISSEMENT AVANT CONTENTIEUX 🚨\n\nMadame / Monsieur ${nom},\n\nMalgré nos deux rappels précédents, votre dette de :\n\n💳 Montant dû : ${montant}\n\nn'est toujours pas réglée.\n\n🚨 3ÈME ET DERNIER AVERTISSEMENT\nSans règlement immédiat, votre dossier sera transmis au service contentieux judiciaire. Vous serez tenu(e) responsable de l'intégralité des frais d'avocat, d'huissier et de justice conformément aux clauses de votre reconnaissance de dette.${ftr}`;
 }
 
 // Send warning to a client (wa / sms / copy)
@@ -2699,7 +2698,6 @@ window.sendWarn = function(day, cid, mode){
       toast(`📋 Avertissement ${day} copié ✓`);
     });
   }
-  // Refresh the detail view to update badges
   setTimeout(()=>renderDetail(), 300);
 };
 
@@ -3224,25 +3222,33 @@ ${isT?`<div style="text-align:center;font-size:11px;color:#888">(Tranche ${d.tra
    CONTENTIEUX MESSAGE
 ================================================================ */
 function buildContentieuxMsg(nom,montant){
-  const L='━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━';
+  const L='━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━';
   return `${L}
 ⚠️ MISE EN DEMEURE OFFICIELLE ⚠️
-OOREDOO – Agence Belguesmi Nader
-📍 THALA – Gouvernorat de Kasserine
+OOREDOO – Agence Thala 1210 Kasserine
+👤 Gérant : Belguesmi Nader
+📞 Tél : +216 21 010 111
+🏢 RC : A13214072021  |  NIF : 978087/G/N/C/000
 ${L}
 
 Madame / Monsieur ${nom},
 
-Suite à trois (3) avertissements officiels demeurés sans réponse, votre dossier a été transféré au service CONTENTIEUX.
+Suite à trois (3) avertissements officiels demeurés sans réponse, votre dossier a été transféré au service CONTENTIEUX de notre agence.
 
 💳 Montant total impayé : ${montant}
 
-Vous disposez de 48 heures pour régler l'intégralité de votre dette. Sans règlement, votre dossier sera transmis aux autorités pour recouvrement judiciaire avec frais à votre charge.
+⚠️ MISE EN DEMEURE FORMELLE :
+Vous disposez de 48 heures pour régler l'intégralité de votre dette en vous présentant à notre agence :
+
+📍 OOREDOO – Agence Thala, 1210 Kasserine
+
+Sans règlement dans ce délai, votre dossier sera immédiatement transmis aux autorités judiciaires compétentes. Conformément à votre reconnaissance de dette signée, vous serez tenu(e) de prendre en charge l'intégralité des frais d'avocat, d'huissier et de justice.
 
 📌 SEUL UN PAIEMENT INTÉGRAL met fin à cette procédure.
 
 ${L}
-OOREDOO – Agence Belguesmi Nader – THALA
+OOREDOO – Agence Thala 1210 Kasserine
+Gérant : Belguesmi Nader | Tél : +216 21 010 111
 ${L}`;
 }
 function openContentieuxMsg(c){
